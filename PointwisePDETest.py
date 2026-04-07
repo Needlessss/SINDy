@@ -109,7 +109,7 @@ t = 0.0
 U_list = [U.copy()]
 t_list = [t]
 
-for n in range(1600):
+for n in range(1000):
     rhs = U + k * f(U)
     U_new = solver(rhs)
 
@@ -137,41 +137,26 @@ ax.set_title(f"Numerical solution to $u_t = u_{{xx}} + 4u(1-u^2)$")
 plt.tight_layout()
 plt.show()
 
-print(len(U_list[1]))
-print(len(t_list))
-
 # Time derivative matrix:
 
 U_dot = np.zeros_like(U_list)
-
 U_dot[1:-1, :] = (U_list[2:, :] - U_list[:-2, :]) / (2 * k)
 U_dot[0, :] = (U_list[1, :] - U_list[0, :]) / k
 U_dot[-1, :] = (U_list[-1, :] - U_list[-2, :]) / k
 
-'''
-for j in range(len(x)):
-    # Fit cubic spline in time for each spatial location x_j
-    cs_t = make_interp_spline(t_list, U_list[:, j], k=3)
-
-    # Evaluate first time derivative at all t
-    U_dot[:, j] = cs_t(t_list, 1)
-'''
-
-# Create library of candidate functions:
 U_x = np.zeros_like(U_list)
 U_xx = np.zeros_like(U_list)
 
 for i in range(len(t_list)):
-    cs = UnivariateSpline(x, U_list[i, :], k=3)
+    U = U_list[i, :]
+    U_x[i, 1:-1] = (U[2:] - U[:-2]) / (2 * h)
+    U_x[i, 0] = (U[1] - U[0]) / h
+    U_x[i, -1] = (U[-1] - U[-2]) / h
 
-    U_x[i, :] = cs(x, 1)
-
-    U_xx[i, :] = cs(x, 2)
+    U_xx[i, :] = (A @ U) / h ** 2
 
 U_0 = np.ones_like(U_list)
-
 U_sq = U_list ** 2
-
 U_cu = U_list ** 3
 
 candidate_library = np.column_stack([
@@ -183,16 +168,7 @@ candidate_library = np.column_stack([
     U_xx.flatten(),  # u_xx
 
 ])
-"""
-# Products: polynomial * u_x
-(U_list * U_x).flatten(),  # u*u_x
-(U_sq * U_x).flatten(),  # u²*u_x
-(U_cu * U_x).flatten(),  # u³*u_x
-# Products: polynomial * u_xx
-(U_list * U_xx).flatten(),  # u*u_xx
-(U_sq * U_xx).flatten(),  # u²*u_xx
-(U_cu * U_xx).flatten(),  # u³*u_xx
-"""
+
 U_dot_flat = U_dot.flatten()
 
 print(f"Library shape: {candidate_library.shape}")
@@ -203,8 +179,12 @@ maxit = 10000
 tol = 0.01
 normalize = 0
 
-lambdas = [0, 1e-3, 1e-2, 0.1, 1, 10, 100, 1000]  # Ridge penalties
-tolerances = [1e-4, 1e-3, 5e-3, 1e-2, 5e-2, 0.1, 0.5]  # Sparsity thresholds
+#lambdas = [0, 1e-3, 1e-2, 0.1, 1, 10, 100, 1000]  # Ridge penalties
+#tolerances = [1e-4, 1e-3, 5e-3, 1e-2, 5e-2, 0.1, 0.5]  # Sparsity thresholds
+
+lambdas=[1]
+tolerances=[0.1]
+
 k_folds = 5
 
 kf = KFold(n_splits=k_folds, shuffle=False)
@@ -285,7 +265,7 @@ print(f"Best Parameters: {best_params}")
 print(f"Lowest MSE: {best_mse:.6e}")
 
 final_coef = STRidge(candidate_library, U_dot_flat.reshape(-1, 1),
-                     best_params['lam'], 10000, best_params['tol'], normalize=2)
+                     best_params['lam'], 10000, best_params['tol'], normalize=0)
 final_coef = final_coef.flatten().real
 coef = final_coef
 
