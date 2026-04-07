@@ -7,7 +7,7 @@ from pysindy.optimizers import FROLS
 PLOTTING = False
 PLOT_MODES = True
 PRINT_XI = False
-N_MODES = 5
+N_MODES = 7
 METHOD = "FROLS"  # Options: STRidge, FROLS
 TRAIN_FRAC = 0.3
 NORMALISE = False
@@ -125,7 +125,7 @@ if METHOD == "STRidge":
         ).flatten()
 
 if METHOD == "FROLS":
-    opt = FROLS(max_iter=2, alpha=0, kappa=1e-5)
+    opt = FROLS(max_iter=10, alpha=0, kappa=5e-8)
     opt.fit(Theta_train, X_dot_train)
     Xi = opt.coef_.T
 
