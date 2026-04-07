@@ -1,11 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-
 from PDE_FIND import STRidge
 from pysindy.optimizers import FROLS
 
-PLOTTING = True
+PLOTTING = False
+PLOT_MODES = True
+PRINT_XI = False
 N_MODES = 5
 METHOD = "FROLS"  # Options: STRidge, FROLS
 TRAIN_FRAC = 0.3
@@ -124,13 +125,14 @@ if METHOD == "STRidge":
         ).flatten()
 
 if METHOD == "FROLS":
-    opt = FROLS(max_iter=1, alpha=0, kappa=1e-7)
+    opt = FROLS(max_iter=5, alpha=0, kappa=1e-5)
     opt.fit(Theta_train, X_dot_train)
     Xi = opt.coef_.T
 
-for i in range(2*N_MODES):
-    formatted = [f"{num:.6f}" for num in Xi[:, i]]
-    print(f"Equation {i}: {formatted}")
+if PRINT_XI:
+    for i in range(2*N_MODES):
+        formatted = [f"{num:.6f}" for num in Xi[:, i]]
+        print(f"Equation {i}: {formatted}")
 
 print(f"Active terms: {np.count_nonzero(Xi)}")
 
@@ -172,7 +174,7 @@ U_hat_sindy[:, 1:N_MODES+1] = a_sim
 U_sindy = np.real(np.fft.irfft(U_hat_sindy, n=len(x), axis=1))
 
 
-if PLOTTING:
+if PLOT_MODES:
     for mode in range(N_MODES):
         fig, ax = plt.subplots(figsize=(8, 3))
 
@@ -190,7 +192,7 @@ if PLOTTING:
         plt.tight_layout()
         plt.show()
 
-
+if PLOTTING:
     fig1 = plt.figure(figsize=(16, 6))
     ax1 = fig1.add_subplot(1, 3, 1, projection='3d')
     Xm, Tm = np.meshgrid(x, t)
