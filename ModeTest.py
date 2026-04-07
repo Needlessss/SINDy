@@ -125,7 +125,7 @@ if METHOD == "STRidge":
         ).flatten()
 
 if METHOD == "FROLS":
-    opt = FROLS(max_iter=5, alpha=0, kappa=1e-5)
+    opt = FROLS(max_iter=2, alpha=0, kappa=1e-5)
     opt.fit(Theta_train, X_dot_train)
     Xi = opt.coef_.T
 
