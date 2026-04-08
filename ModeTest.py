@@ -69,14 +69,12 @@ def solve_wave_equation(
         )
         u[n+1, -1] = u[n+1, 0]
 
-    n_x   = len(x)
     u_fft = np.fft.fft(u, axis=1)
-    freqs = np.fft.fftfreq(n_x, d=dx)
 
-    return x, t, u, dx, dt, freqs, u_fft
+    return x, t, u, dx, dt, u_fft
 
 
-x, t, u, dx, dt, freqs, modes = solve_wave_equation()
+x, t, u, dx, dt, modes = solve_wave_equation()
 n = len(x)
 
 U_hat_filtered = np.zeros_like(modes, dtype=complex)
@@ -238,7 +236,7 @@ print("Modal-True  MSE:", np.mean((u - U_reconstructed) ** 2))
 print("SINDy-True  MSE:", np.mean((u - U_sindy) ** 2))
 
 #Test on different initial condition
-x_test, t_test, u_test, dx_test, dt_test, freqs_test, modes_test = solve_wave_equation(ic=sin_ic)
+x_test, t_test, u_test, dx_test, dt_test, modes_test = solve_wave_equation(ic=sin_ic)
 n_test = len(x_test)
 
 a_complex_test = modes_test[:, 1:N_MODES+1]
