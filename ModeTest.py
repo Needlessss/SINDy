@@ -177,7 +177,7 @@ U_sindy = np.fft.ifft(U_hat_sindy, n=n, axis=1).real
 if PLOT_MODES:
     for mode in range(N_MODES):
         fig, ax = plt.subplots(figsize=(8, 3))
-        ax.plot(t,          a[:, mode],            color='black',     label="True")
+        ax.plot(t, a[:, mode], color='black', label="True")
         ax.plot(t[:N_train], a_sim_real[:N_train, mode], '--', color='steelblue', label="SINDy (train)")
         ax.plot(t[N_train:], a_sim_real[N_train:, mode], '--', color='tomato',    label="SINDy (forecast)")
         ax.axvline(t[N_train], color='gray', linestyle=':', linewidth=1)
