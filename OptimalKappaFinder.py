@@ -13,9 +13,13 @@ warnings.filterwarnings("ignore", category=LinAlgWarning)
 
 
 PRINT_XI    = False
-N_MODES     = 5
+N_MODES     = 4
 METHOD      = "FROLS"
 TRAIN_FRAC  = 0.3
+
+
+def sin_ic(x, L):
+    return np.sin(2 * np.pi * x / L)
 
 
 def solve_wave_equation(
@@ -114,53 +118,57 @@ def build_library(X):
 Theta_train = build_library(X_train)
 
 vals = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-subs = [1e-8, 1e-9, 1e-10, 1e-11, 1e-12, 1e-13, 1e-14, 1e-15, 1e-16, 1e-17, 1e-18, 1e-19]
+subs = [1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10, 1e-11, 1e-12, 1e-13, 1e-14, 1e-15, 1e-16, 1e-17, 1e-18, 1e-19, 1e-20, 1e-21, 1e-22, 1e-23, 1e-24]
 kappas = [x * y for x, y in product(vals, subs)]
-errors = np.zeros(np.shape(kappas))
-terms = np.zeros(np.shape(kappas))
+errors = np.ones(np.shape(kappas))
+terms = np.ones(np.shape(kappas))
 
 for i, kappa_val in enumerate(kappas):
-    if METHOD == "FROLS":
-        opt = FROLS(max_iter=5, alpha=0, kappa=kappa_val)
-        opt.fit(Theta_train, X_dot_train)
-        Xi = opt.coef_.T
+    try:
+        if METHOD == "FROLS":
+            opt = FROLS(max_iter=5, alpha=0, kappa=kappa_val)
+            opt.fit(Theta_train, X_dot_train)
+            Xi = opt.coef_.T
 
-    if PRINT_XI:
-        for i in range(2*N_MODES):
-            formatted = [f"{num:.6f}" for num in Xi[:, i]]
-            print(f"Equation {i}: {formatted}")
-
-    terms[i] = np.count_nonzero(Xi)
-
-
-    def sindy_rhs_ivp(t, X, Xi):
-        Theta = build_library(X.reshape(1, -1))
-        return (Theta @ Xi).flatten()
+        if PRINT_XI:
+            for i in range(2*N_MODES):
+                formatted = [f"{num:.6f}" for num in Xi[:, i]]
+                print(f"Equation {i}: {formatted}")
 
 
-    a0 = a[0]
-    v0 = compute_time_derivative(a, dt)[0]
-    X0 = np.concatenate([a0, v0])
+        def sindy_rhs_ivp(t, X, Xi):
+            Theta = build_library(X.reshape(1, -1))
+            return (Theta @ Xi).flatten()
 
-    sol = solve_ivp(
-        fun=lambda t, X: sindy_rhs_ivp(t, X, Xi),
-        t_span=(t[0], t[-1]),
-        y0=X0,
-        t_eval=t,
-        method='RK45',
-    )
 
-    X_sim = sol.y.T
-    a_sim = X_sim[:, :2*N_MODES]
-    a_sim_real = a_sim[:, :N_MODES]
-    a_sim_imag = a_sim[:, N_MODES:]
-    a_sim_complex = a_sim_real + 1j * a_sim_imag
+        a0 = a[0]
+        v0 = compute_time_derivative(a, dt)[0]
+        X0 = np.concatenate([a0, v0])
 
-    U_hat_sindy = np.zeros_like(modes, dtype=complex)
-    U_hat_sindy[:, 1:N_MODES+1] = a_sim_complex
-    U_sindy = np.fft.ifft(U_hat_sindy, n=n, axis=1).real
+        sol = solve_ivp(
+            fun=lambda t, X: sindy_rhs_ivp(t, X, Xi),
+            t_span=(t[0], t[-1]),
+            y0=X0,
+            t_eval=t,
+            method='RK45',
+        )
 
-    errors[i] = np.mean((U_reconstructed - U_sindy) ** 2)
+        X_sim = sol.y.T
+        a_sim = X_sim[:, :2*N_MODES]
+        a_sim_real = a_sim[:, :N_MODES]
+        a_sim_imag = a_sim[:, N_MODES:]
+        a_sim_complex = a_sim_real + 1j * a_sim_imag
+
+        U_hat_sindy = np.zeros_like(modes, dtype=complex)
+        U_hat_sindy[:, 1:N_MODES+1] = a_sim_complex
+        U_sindy = np.fft.ifft(U_hat_sindy, n=n, axis=1).real
+
+        terms[i] = np.count_nonzero(Xi)
+        errors[i] = np.mean((U_reconstructed - U_sindy) ** 2)
+        print(f"{(i/len(kappas))*100}% Complete")
+
+    except:
+        print("Exploded Probably")
 
 min_index = np.argmin(errors)
 print(f"Minimum Error: {errors[min_index]}")

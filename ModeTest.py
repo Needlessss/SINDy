@@ -12,12 +12,16 @@ warnings.filterwarnings("ignore", category=LinAlgWarning)
 ################################################################################
 
 
-PLOTTING    = False
-PLOT_MODES  = True
+PLOTTING    = True
+PLOT_MODES  = False
 PRINT_XI    = False
-N_MODES     = 7
+N_MODES     = 4
 METHOD      = "FROLS"   # Options: STRidge, FROLS
 TRAIN_FRAC  = 0.3
+
+
+def sin_ic(x, L):
+    return np.sin((2 * np.pi * x / L))
 
 
 def solve_wave_equation(
@@ -131,7 +135,7 @@ if METHOD == "STRidge":
         ).flatten()
 
 if METHOD == "FROLS":
-    opt = FROLS(max_iter=5, alpha=0, kappa=1e-13)
+    opt = FROLS(max_iter=5, alpha=0, kappa=3e-13)
     opt.fit(Theta_train, X_dot_train)
     Xi = opt.coef_.T
 
@@ -233,12 +237,7 @@ print("\nSINDy-Modal MSE:", np.mean((U_reconstructed - U_sindy) ** 2))
 print("Modal-True  MSE:", np.mean((u - U_reconstructed) ** 2))
 print("SINDy-True  MSE:", np.mean((u - U_sindy) ** 2))
 
-
 #Test on different initial condition
-def sin_ic(x, L):
-    return np.sin(2 * np.pi * x / L)
-
-
 x_test, t_test, u_test, dx_test, dt_test, freqs_test, modes_test = solve_wave_equation(ic=sin_ic)
 n_test = len(x_test)
 
