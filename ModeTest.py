@@ -4,13 +4,20 @@ from scipy.integrate import solve_ivp
 from PDE_FIND import STRidge
 from pysindy.optimizers import FROLS
 
-PLOTTING = False
-PLOT_MODES = True
-PRINT_XI = False
-N_MODES = 7
-METHOD = "FROLS"  # Options: STRidge, FROLS
-TRAIN_FRAC = 0.3
-NORMALISE = False
+#Disable this if you aren't certain ill conditioned matrices won't cause you issues
+################
+import warnings
+from scipy.linalg import LinAlgWarning
+warnings.filterwarnings("ignore", category=LinAlgWarning)
+################
+
+
+PLOTTING    = True
+PLOT_MODES  = True
+PRINT_XI    = False
+N_MODES     = 7
+METHOD      = "FROLS"   # Options: STRidge, FROLS
+TRAIN_FRAC  = 0.3
 
 
 def solve_wave_equation(
@@ -23,7 +30,7 @@ def solve_wave_equation(
 ):
     dx = L / N
     dt = 0.4 * dx / c
-    r = c * dt / dx
+    r  = c * dt / dx
 
     x = np.linspace(-L/2, L/2, N + 1)
     t = np.arange(n_steps + 1) * dt
@@ -35,7 +42,11 @@ def solve_wave_equation(
         u[0, 1:-1]
         + 0.5 * r**2 * (u[0, 2:] - 2*u[0, 1:-1] + u[0, :-2])
     )
-    u[1, 0] = u[1, -1] = 0.0
+    u[1, 0]  = (
+        u[0, 0]
+        + 0.5 * r**2 * (u[0, 1] - 2*u[0, 0] + u[0, -2])
+    )
+    u[1, -1] = u[1, 0]
 
     for n in range(1, n_steps):
         u[n+1, 1:-1] = (
@@ -43,64 +54,60 @@ def solve_wave_equation(
             - u[n-1, 1:-1]
             + r**2 * (u[n, 2:] - 2*u[n, 1:-1] + u[n, :-2])
         )
-        u[n + 1, 0] = u[n + 1, 1]
-        u[n + 1, -1] = u[n + 1, -2]
+        u[n+1, 0] = (
+            2*u[n, 0]
+            - u[n-1, 0]
+            + r**2 * (u[n, 1] - 2*u[n, 0] + u[n, -2])
+        )
+        u[n+1, -1] = u[n+1, 0]
 
-    u_fft = np.real(np.fft.rfft(u[:, :], axis=1))
-    freqs = np.fft.rfftfreq(N, d=dx)
+    n_x   = len(x)
+    u_fft = np.fft.fft(u, axis=1)
+    freqs = np.fft.fftfreq(n_x, d=dx)
 
     return x, t, u, dx, dt, freqs, u_fft
 
 
 x, t, u, dx, dt, freqs, modes = solve_wave_equation()
+n = len(x)
 
-U_hat_filtered = np.zeros_like(modes)
+plot_modes       = np.abs(modes)
+U_hat_filtered   = np.zeros_like(modes, dtype=complex)
 U_hat_filtered[:, 1:N_MODES+1] = modes[:, 1:N_MODES+1]
-U_reconstructed = np.real(np.fft.irfft(U_hat_filtered, n=len(x), axis=1))
+U_reconstructed  = np.fft.ifft(U_hat_filtered, n=n, axis=1).real
 
-a = np.real(modes[:, 1:N_MODES+1])
+a_complex = modes[:, 1:N_MODES+1]
+a_real    = a_complex.real
+a_imag    = a_complex.imag
 
-N_total = len(t)
-N_train = int(N_total * TRAIN_FRAC)
+a = np.hstack([a_real, a_imag])
 
-a_train = a[:N_train]
-t_train = t[:N_train]
+N_total  = len(t)
+N_train  = int(N_total * TRAIN_FRAC)
 
-a_maxabs = np.abs(a_train).max(axis=0)
-a_maxabs[a_maxabs < 1e-10] = 1.0
-
-if NORMALISE:
-    a_norm = a / a_maxabs
-    a_train_norm = a_train / a_maxabs
-else:
-    a_norm = a
-    a_train_norm = a_train
+a_train  = a[:N_train]
+t_train  = t[:N_train]
 
 
 def compute_time_derivative(a, dt):
-    da = np.zeros_like(a)
-    da[1:-1] = (a[2:] - a[:-2]) / (2 * dt)
-    da[0]    = (a[1] - a[0]) / dt
-    da[-1]   = (a[-1] - a[-2]) / dt
+    da         = np.zeros_like(a)
+    da[1:-1]   = (a[2:] - a[:-2]) / (2 * dt)
+    da[0]      = (a[1]  - a[0])   / dt
+    da[-1]     = (a[-1] - a[-2])  / dt
     return da
 
 
-a_dot_train = compute_time_derivative(a_train_norm, dt)
-v_train = a_dot_train
-v_dot_train = compute_time_derivative(v_train, dt)
+a_dot_train  = compute_time_derivative(a_train, dt)
+v_train      = a_dot_train
+v_dot_train  = compute_time_derivative(v_train, dt)
 
-X_train = np.hstack([a_train_norm, v_train])
+X_train     = np.hstack([a_train, v_train])
 X_dot_train = np.hstack([v_train, v_dot_train])
 
 
-
 def build_library(X):
-    Nt, n = X.shape
-    library = []
-
-    for i in range(n):
-        library.append(X[:, i])
-
+    n_cols  = X.shape[1]
+    library = [X[:, i] for i in range(n_cols)]
     return np.column_stack(library)
 
 
@@ -112,8 +119,7 @@ if METHOD == "STRidge":
     lam   = 0
     tol   = 1e-1
     maxit = int(1e6)
-
-    Xi = np.zeros((Theta_train.shape[1], X_dot_train.shape[1]))
+    Xi    = np.zeros((Theta_train.shape[1], X_dot_train.shape[1]))
     for i in range(X_dot_train.shape[1]):
         Xi[:, i] = STRidge(
             Theta_train,
@@ -125,7 +131,7 @@ if METHOD == "STRidge":
         ).flatten()
 
 if METHOD == "FROLS":
-    opt = FROLS(max_iter=10, alpha=0, kappa=5e-8)
+    opt = FROLS(max_iter=6, alpha=0, kappa=1e-19)
     opt.fit(Theta_train, X_dot_train)
     Xi = opt.coef_.T
 
@@ -136,93 +142,152 @@ if PRINT_XI:
 
 print(f"Active terms: {np.count_nonzero(Xi)}")
 
+
 def sindy_rhs_ivp(t, X, Xi):
     Theta = build_library(X.reshape(1, -1))
     return (Theta @ Xi).flatten()
 
 
-a0_norm = a_norm[0]
-v0_norm = compute_time_derivative(a_norm, dt)[0]
-X0 = np.concatenate([a0_norm, v0_norm])
-
-t_span = (t[0], t[-1])
-t_eval = t
+a0 = a[0]
+v0 = compute_time_derivative(a, dt)[0]
+X0 = np.concatenate([a0, v0])
 
 sol = solve_ivp(
     fun=lambda t, X: sindy_rhs_ivp(t, X, Xi),
-    t_span=t_span,
+    t_span=(t[0], t[-1]),
     y0=X0,
-    t_eval=t_eval,
+    t_eval=t,
     method='RK45',
     rtol=1e-8,
-    atol=1e-10
+    atol=1e-10,
 )
 
 X_sim = sol.y.T
 
-a_sim_norm = X_sim[:, :N_MODES]
-if NORMALISE:
-    a_sim = a_sim_norm * a_maxabs
-else:
-    a_sim = a_sim_norm
+a_sim      = X_sim[:, :2*N_MODES]
+a_sim_real = a_sim[:, :N_MODES]
+a_sim_imag = a_sim[:, N_MODES:]
+a_sim_complex = a_sim_real + 1j * a_sim_imag
 
-
-U_hat_sindy = np.zeros_like(modes)
-
-U_hat_sindy[:, 1:N_MODES+1] = a_sim
-
-U_sindy = np.real(np.fft.irfft(U_hat_sindy, n=len(x), axis=1))
+U_hat_sindy = np.zeros_like(modes, dtype=complex)
+U_hat_sindy[:, 1:N_MODES+1] = a_sim_complex
+U_sindy = np.fft.ifft(U_hat_sindy, n=len(x), axis=1).real
 
 
 if PLOT_MODES:
     for mode in range(N_MODES):
         fig, ax = plt.subplots(figsize=(8, 3))
-
-        ax.plot(t, a[:, mode], color='black', label="True")
+        ax.plot(t,          a[:, mode],            color='black',     label="True")
         ax.plot(t[:N_train], a_sim[:N_train, mode], '--', color='steelblue', label="SINDy (train)")
-        ax.plot(t[N_train:], a_sim[N_train:, mode], '--', color='tomato', label="SINDy (forecast)")
+        ax.plot(t[N_train:], a_sim[N_train:, mode], '--', color='tomato',    label="SINDy (forecast)")
         ax.axvline(t[N_train], color='gray', linestyle=':', linewidth=1)
-
         ax.set_xlabel("Time")
         ax.set_ylabel("Mode amplitude")
         ax.set_title(f"Mode {mode} — {METHOD}")
         ax.legend()
         ax.grid(True, alpha=0.3)
-
         plt.tight_layout()
         plt.show()
 
 if PLOTTING:
-    fig1 = plt.figure(figsize=(16, 6))
+    plt.imshow(
+        plot_modes[:, :1000].T,
+        aspect='auto',
+        origin='lower',
+    )
+    plt.xlabel("Time index")
+    plt.ylabel("Mode number")
+    plt.title("Fourier Modal Evolution")
+    plt.colorbar()
+    plt.show()
+
+    fig1      = plt.figure(figsize=(16, 6))
+    Xm, Tm   = np.meshgrid(x, t)
+
     ax1 = fig1.add_subplot(1, 3, 1, projection='3d')
-    Xm, Tm = np.meshgrid(x, t)
     ax1.plot_surface(Xm, Tm, u, cmap='viridis')
-    ax1.set_xlabel('x')
-    ax1.set_ylabel('t')
-    ax1.set_zlabel('u')
+    ax1.set_xlabel('x'); ax1.set_ylabel('t'); ax1.set_zlabel('u')
     ax1.set_title('Travelling Wave Solution')
 
     ax2 = fig1.add_subplot(1, 3, 2, projection='3d')
     ax2.plot_surface(Xm, Tm, U_reconstructed, cmap='viridis')
-    ax2.set_xlabel('x')
-    ax2.set_ylabel('t')
-    ax2.set_zlabel('u')
-    ax2.set_title(f'Travelling Wave Solution Reconstruction ({N_MODES} modes)')
+    ax2.set_xlabel('x'); ax2.set_ylabel('t'); ax2.set_zlabel('u')
+    ax2.set_title(f'Reconstruction ({N_MODES} modes)')
 
-    ax2 = fig1.add_subplot(1, 3, 3, projection='3d')
-    ax2.plot_surface(Xm, Tm, U_sindy, cmap='viridis')
-    ax2.set_xlabel('x')
-    ax2.set_ylabel('t')
-    ax2.set_zlabel('u')
-    ax2.set_title(f'Travelling Wave SINDy Modal Solution Reconstruction ({N_MODES} modes)')
+    ax3 = fig1.add_subplot(1, 3, 3, projection='3d')
+    ax3.plot_surface(Xm, Tm, U_sindy, cmap='viridis')
+    ax3.set_xlabel('x'); ax3.set_ylabel('t'); ax3.set_zlabel('u')
+    ax3.set_title(f'SINDy Modal Reconstruction ({N_MODES} modes)')
+
     plt.tight_layout()
     plt.show()
 
-error = np.mean((U_reconstructed - U_sindy) ** 2)
-print("SINDy-Modal MSE:", error)
+print("SINDy-Modal MSE:", np.mean((U_reconstructed - U_sindy) ** 2))
+print("Modal-True  MSE:", np.mean((u - U_reconstructed) ** 2))
+print("SINDy-True  MSE:", np.mean((u - U_sindy) ** 2))
 
-error = np.mean((u - U_reconstructed) ** 2)
-print("Modal-True MSE:", error)
 
-error = np.mean((u - U_sindy) ** 2)
-print("SINDy-True MSE:", error)
+#Test on different initial condition
+
+x_test, t_test, u_test, dx_test, dt_test, freqs_test, modes_test = solve_wave_equation(x0=0.3)
+
+a_complex_test = modes_test[:, 1:N_MODES+1]
+a_real_test    = a_complex_test.real
+a_imag_test    = a_complex_test.imag
+
+a_test = np.hstack([a_real_test, a_imag_test])
+
+a0_test = a_test[0]
+v0_test = compute_time_derivative(a_test, dt_test)[0]
+X0_test = np.concatenate([a0_test, v0_test])
+
+
+sol_test = solve_ivp(
+    fun=lambda t, X: sindy_rhs_ivp(t, X, Xi),
+    t_span=(t_test[0], t_test[-1]),
+    y0=X0_test,
+    t_eval=t_test,
+    method='RK45',
+    rtol=1e-8,
+    atol=1e-10,
+)
+
+X_sim_test = sol_test.y.T
+
+a_sim_test = X_sim_test[:, :2*N_MODES]
+a_sim_real_test = a_sim_test[:, :N_MODES]
+a_sim_imag_test = a_sim_test[:, N_MODES:]
+a_sim_complex_test = a_sim_real_test + 1j * a_sim_imag_test
+
+U_hat_sindy_test = np.zeros_like(modes_test, dtype=complex)
+U_hat_sindy_test[:, 1:N_MODES+1] = a_sim_complex_test
+U_sindy_test = np.fft.ifft(U_hat_sindy_test, n=len(x), axis=1).real
+
+# Diagnostic: how different is the shifted IC in modal space?
+print("\n\nX0 train:", X0[:4])
+print("X0 test: ", X0_test[:4])
+
+# Add MSE report for the test case too
+U_hat_true_test = np.zeros_like(modes_test, dtype=complex)
+U_hat_true_test[:, 1:N_MODES+1] = modes_test[:, 1:N_MODES+1].copy()
+U_reconstructed_test = np.fft.ifft(U_hat_true_test, n=len(x), axis=1).real
+
+print("SINDy-True MSE (test IC):", np.mean((u_test - U_sindy_test)**2))
+print("Modal-True MSE (test IC):", np.mean((u_test - U_reconstructed_test)**2))
+
+if PLOTTING:
+    fig1      = plt.figure(figsize=(14, 6))
+    Xm_test, Tm_test   = np.meshgrid(x_test, t_test)
+
+    ax1 = fig1.add_subplot(1, 2, 1, projection='3d')
+    ax1.plot_surface(Xm_test, Tm_test, u_test, cmap='viridis')
+    ax1.set_xlabel('x'); ax1.set_ylabel('t'); ax1.set_zlabel('u')
+    ax1.set_title('Travelling Wave Solution')
+
+    ax2 = fig1.add_subplot(1, 2, 2, projection='3d')
+    ax2.plot_surface(Xm_test, Tm_test, U_sindy_test, cmap='viridis')
+    ax2.set_xlabel('x'); ax2.set_ylabel('t'); ax2.set_zlabel('u')
+    ax2.set_title(f'Reconstruction')
+
+    plt.tight_layout()
+    plt.show()
