@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore", category=LinAlgWarning)
 PLOTTING    = True
 PLOT_MODES  = True
 PRINT_XI    = False
-N_MODES     = 5
+N_MODES     = 7
 METHOD      = "FROLS"   # Options: STRidge, FROLS
 TRAIN_FRAC  = 0.3
 
@@ -26,7 +26,8 @@ def solve_wave_equation(
     N=200,
     n_steps=1000,
     sigma=0.15,
-    x0=0.0,
+    x0=0.3,
+    ic=None,
 ):
     dx = L / N
     dt = 0.4 * dx / c
@@ -36,7 +37,10 @@ def solve_wave_equation(
     t = np.arange(n_steps + 1) * dt
 
     u = np.zeros((n_steps + 1, N + 1))
-    u[0] = np.exp(-0.5 * ((x - x0) / sigma) ** 2)
+    if ic is None:
+        u[0] = np.exp(-0.5 * ((x - x0) / sigma) ** 2)
+    else:
+        u[0] = ic(x, L)
 
     u[1, 1:-1] = (
         u[0, 1:-1]
@@ -127,7 +131,7 @@ if METHOD == "STRidge":
         ).flatten()
 
 if METHOD == "FROLS":
-    opt = FROLS(max_iter=6, alpha=0, kappa=1e-18)
+    opt = FROLS(max_iter=5, alpha=0, kappa=1e-15)
     opt.fit(Theta_train, X_dot_train)
     Xi = opt.coef_.T
 
@@ -170,8 +174,8 @@ if PLOT_MODES:
     for mode in range(N_MODES):
         fig, ax = plt.subplots(figsize=(8, 3))
         ax.plot(t,          a[:, mode],            color='black',     label="True")
-        ax.plot(t[:N_train], a_sim[:N_train, mode], '--', color='steelblue', label="SINDy (train)")
-        ax.plot(t[N_train:], a_sim[N_train:, mode], '--', color='tomato',    label="SINDy (forecast)")
+        ax.plot(t[:N_train], a_sim_real[:N_train, mode], '--', color='steelblue', label="SINDy (train)")
+        ax.plot(t[N_train:], a_sim_real[N_train:, mode], '--', color='tomato',    label="SINDy (forecast)")
         ax.axvline(t[N_train], color='gray', linestyle=':', linewidth=1)
         ax.set_xlabel("Time")
         ax.set_ylabel("Mode amplitude")
@@ -229,8 +233,13 @@ print("\nSINDy-Modal MSE:", np.mean((U_reconstructed - U_sindy) ** 2))
 print("Modal-True  MSE:", np.mean((u - U_reconstructed) ** 2))
 print("SINDy-True  MSE:", np.mean((u - U_sindy) ** 2))
 
+
 #Test on different initial condition
-x_test, t_test, u_test, dx_test, dt_test, freqs_test, modes_test = solve_wave_equation(sigma=1)
+def sin_ic(x, L):
+    return np.sin(2 * np.pi * x / L)
+
+
+x_test, t_test, u_test, dx_test, dt_test, freqs_test, modes_test = solve_wave_equation(ic=sin_ic)
 n_test = len(x_test)
 
 a_complex_test = modes_test[:, 1:N_MODES+1]
