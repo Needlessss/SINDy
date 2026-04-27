@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-from pysindy.optimizers import STLSQ, FROLS
+from pysindy.optimizers import FROLS
 
 
 import warnings
@@ -12,24 +12,14 @@ warnings.filterwarnings("ignore", category=LinAlgWarning)
 PLOTTING   = True
 PLOT_MODES = False
 PRINT_XI   = True
-n_modes    = 25
+n_modes    = 15
 TRAIN_FRAC = 0.3
 L = 2
 c = 1
 
-
-OPTIMIZER = "FROLS" #FROLS or STLSQ
-
-STLSQ_THRESHOLD = 0.9
-STLSQ_ALPHA     = 0.1
-STLSQ_MAX_ITER  = int(1e9)
-
 FROLS_MAX_ITER  = 1
 FROLS_ALPHA     = 0
 FROLS_KAPPA     = 0
-
-SAVGOL_WINDOW = 15
-SAVGOL_ORDER  = 5
 
 
 def compute_time_derivative(a, dt):
@@ -53,6 +43,7 @@ def solve_wave_equation_2d(
 
     X, Y = np.meshgrid(x, y, indexing='ij')
 
+    """Establish initial amplitude and velocity"""
     x0_disp, y0_disp = +0.2, +0.2
     u0 = np.exp(-((X - x0_disp)**2 + (Y - y0_disp)**2) / (2*sigma**2))
 
@@ -62,24 +53,30 @@ def solve_wave_equation_2d(
     u = np.zeros((n_steps+1, Nx+1, Ny+1))
     u[0] = u0
 
+    """Finite difference laplacian approximation
+    for u_xx + u_yy"""
     lap_u0 = (
         u0[2:, 1:-1] + u0[:-2, 1:-1] +
         u0[1:-1, 2:] + u0[1:-1, :-2] -
         4.0 * u0[1:-1, 1:-1]
     ) / dx**2
 
+    """Taylor expansion to approximate first step"""
     u[1, 1:-1, 1:-1] = (
         u0[1:-1, 1:-1]
         + dt * v0[1:-1, 1:-1]
         + 0.5 * dt**2 * c**2 * lap_u0
     )
 
+    """Apply periodic boundary conditions"""
     u[1, 0, :] = u[1, -2, :]
     u[1, -1, :] = u[1, 1, :]
     u[1, :, 0] = u[1, :, -2]
     u[1, :, -1] = u[1, :, 1]
 
     for n in range(1, n_steps):
+        """Use second order/laplacian finite difference
+        approximations for main stepping"""
         u[n+1, 1:-1, 1:-1] = (
             2.0 * u[n, 1:-1, 1:-1]
             - u[n-1, 1:-1, 1:-1]
@@ -89,6 +86,7 @@ def solve_wave_equation_2d(
                 4.0 * u[n, 1:-1, 1:-1]
             )
         )
+        """Apply periodic boundary conditions"""
         u[n+1, 0, :] = u[n+1, -2, :]
         u[n+1, -1, :] = u[n+1, 1, :]
         u[n+1, :, 0] = u[n+1, :, -2]
@@ -113,6 +111,7 @@ selected_modes = [(kx, ky) for kx, ky in selected_modes if not (kx == 0 and ky =
 Nx_grid = u.shape[1]
 Ny_grid = u.shape[2]
 
+
 def physical_k_sq(kx, ky, Nx_grid, Ny_grid, L):
     kx_w = kx if kx <= Nx_grid // 2 else kx - Nx_grid
     ky_w = ky if ky <= Ny_grid // 2 else ky - Ny_grid
@@ -132,7 +131,7 @@ t_train = t[:N_train]
 all_Xi  = []
 all_sim = []
 
-print(f"Fitting per-mode SINDy [{OPTIMIZER}] …")
+print(f"Fitting SINDy")
 for idx, (kx, ky) in enumerate(selected_modes):
 
     a_r_raw = modes[:, kx, ky].real
@@ -145,19 +144,14 @@ for idx, (kx, ky) in enumerate(selected_modes):
     v_r_dot = compute_time_derivative(v_r, dt)
     v_i_dot = compute_time_derivative(v_i, dt)
 
-    X_k      = np.column_stack([a_r,    a_i,    v_r,    v_i   ])
-    X_dot_k  = np.column_stack([v_r,    v_i,    v_r_dot, v_i_dot])
+    X_k = np.column_stack([a_r, a_i, v_r, v_i])
+    X_dot_k = np.column_stack([v_r, v_i, v_r_dot, v_i_dot])
 
-    Theta_k       = X_k     [:N_train]
+    Theta_k = X_k [:N_train]
     X_dot_k_train = X_dot_k [:N_train]
 
-    if OPTIMIZER == "STLSQ":
-        opt = STLSQ(threshold=STLSQ_THRESHOLD, alpha=STLSQ_ALPHA,
-                    max_iter=STLSQ_MAX_ITER, normalize_columns=True)
-    elif OPTIMIZER == "FROLS":
-        opt = FROLS(max_iter=FROLS_MAX_ITER, alpha=FROLS_ALPHA, kappa=FROLS_KAPPA)
-    else:
-        raise ValueError(f"Unknown OPTIMIZER '{OPTIMIZER}'. Choose 'STLSQ' or 'FROLS'.")
+    opt = FROLS(max_iter=FROLS_MAX_ITER, alpha=FROLS_ALPHA, kappa=FROLS_KAPPA)
+
     opt.fit(Theta_k, X_dot_k_train)
     Xi_k = opt.coef_.T
 
@@ -169,15 +163,13 @@ for idx, (kx, ky) in enumerate(selected_modes):
         kx_phys = (2 * np.pi / L) * kx_w
         ky_phys = (2 * np.pi / L) * ky_w
         omega_sq_expected  = c ** 2 * (kx_phys ** 2 + ky_phys ** 2)
-        omega_sq_recovered_r = -Xi_k[0, 2]   # coeff of a_real in v_real eqn
-        omega_sq_recovered_i = -Xi_k[1, 3]   # coeff of a_imag in v_imag eqn
+        omega_sq_recovered_r = -Xi_k[0, 2]
+        omega_sq_recovered_i = -Xi_k[1, 3]
         print(
-            f"  mode (kx_idx={kx}, ky_idx={ky})  "
-            f"physical (kx={kx_w}, ky={ky_w})\n"
-            f"  Xi =\n{np.round(Xi_k, 4)}\n"
-            f"  Expected ω²: {omega_sq_expected:.4f}  |  "
-            f"Recovered real: {omega_sq_recovered_r:.4f}  "
-            f"imag: {omega_sq_recovered_i:.4f}\n"
+            f"mode (kx_idx={kx}, ky_idx={ky})  "
+            f"Xi =\n{np.round(Xi_k, 2)}\n"
+            f"Expected ω²: {omega_sq_expected:.4f}\n"
+            f"Recovered real:{omega_sq_recovered_r:.4f} imag:{omega_sq_recovered_i:.4f}\n"
         )
 
     X0_k = np.array([a_r[0], a_i[0], v_r[0], v_i[0]])
