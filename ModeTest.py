@@ -12,9 +12,10 @@ warnings.filterwarnings("ignore", category=LinAlgWarning)
 ################################################################################
 
 
+PLOT_AMPLITUDES = True
 PLOTTING    = True
-PLOT_MODES  = False
-PRINT_XI    = False
+PLOT_MODES  = True
+PRINT_XI    = True
 N_MODES     = 4
 METHOD      = "FROLS"   # Options: STRidge, FROLS
 TRAIN_FRAC  = 0.3
@@ -55,6 +56,7 @@ def solve_wave_equation(
         + 0.5 * r**2 * (u[0, 1] - 2*u[0, 0] + u[0, -2])
     )
     u[1, -1] = u[1, 0]
+
 
     for n in range(1, n_steps):
         u[n+1, 1:-1] = (
@@ -133,12 +135,12 @@ if METHOD == "STRidge":
         ).flatten()
 
 if METHOD == "FROLS":
-    opt = FROLS(max_iter=5, alpha=0, kappa=3e-13)
+    opt = FROLS(max_iter=1, alpha=0, kappa=3e-13)
     opt.fit(Theta_train, X_dot_train)
     Xi = opt.coef_.T
 
 if PRINT_XI:
-    for i in range(2*N_MODES):
+    for i in range(4*N_MODES):
         formatted = [f"{num:.6f}" for num in Xi[:, i]]
         print(f"Equation {i}: {formatted}")
 
@@ -187,7 +189,7 @@ if PLOT_MODES:
         plt.tight_layout()
         plt.show()
 
-if PLOTTING:
+if PLOT_AMPLITUDES:
     plt.imshow(
         modes.real[:, :1000].T,
         aspect='auto',
@@ -210,6 +212,8 @@ if PLOTTING:
     plt.colorbar()
     plt.show()
 
+
+if PLOTTING:
     fig1 = plt.figure(figsize=(16, 6))
     Xm, Tm = np.meshgrid(x, t)
 

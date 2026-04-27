@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
+from scipy.signal import savgol_filter
 from pysindy.optimizers import FROLS
 from itertools import product
 import numpy as np
@@ -44,6 +45,9 @@ def solve_wave_equation(
     else:
         u[0] = ic(x, L)
 
+    #noise = np.random.normal(0, 0.01, size=u[0].shape)
+    #u[0] += noise
+
     u[1, 1:-1] = (
         u[0, 1:-1]
         + 0.5 * r**2 * (u[0, 2:] - 2*u[0, 1:-1] + u[0, :-2])
@@ -67,9 +71,13 @@ def solve_wave_equation(
         )
         u[n+1, -1] = u[n+1, 0]
 
-    u_fft = np.fft.fft(u, axis=1)
+    u_clean = u.copy()
+    noise = np.random.normal(0, 0.1, size=u.shape)
+    u_noisy = u_clean + noise
 
-    return x, t, u, dx, dt, u_fft
+    u_fft = np.fft.fft(u_noisy, axis=1)
+
+    return x, t, u_noisy, dx, dt, u_fft
 
 
 x, t, u, dx, dt, modes = solve_wave_equation()
@@ -91,11 +99,23 @@ a_train = a[:N_train]
 t_train = t[:N_train]
 
 
-def compute_time_derivative(a, dt):
+def compute_time_derivative__(a, dt):
     da = np.zeros_like(a)
     da[1:-1] = (a[2:] - a[:-2]) / (2 * dt)
     da[0] = (a[1]  - a[0])   / dt
     da[-1] = (a[-1] - a[-2])  / dt
+    return da
+
+
+def compute_time_derivative(a, dt, window_length=45, polyorder=3):
+    da = savgol_filter(
+        a,
+        window_length=window_length,
+        polyorder=polyorder,
+        deriv=1,
+        delta=dt,
+        axis=0
+    )
     return da
 
 
@@ -116,7 +136,7 @@ def build_library(X):
 Theta_train = build_library(X_train)
 
 vals = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-subs = [1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10, 1e-11, 1e-12, 1e-13, 1e-14, 1e-15, 1e-16, 1e-17, 1e-18, 1e-19, 1e-20, 1e-21, 1e-22, 1e-23, 1e-24]
+subs = [1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10, 1e-11, 1e-12, 1e-13, 1e-14, 1e-15, 1e-16, 1e-17, 1e-18, 1e-19, 1e-20, 1e-21, 1e-22, 1e-23, 1e-24]
 kappas = [x * y for x, y in product(vals, subs)]
 errors = np.ones(np.shape(kappas))
 terms = np.ones(np.shape(kappas))
