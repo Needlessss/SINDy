@@ -14,8 +14,8 @@ warnings.filterwarnings("ignore", category=LinAlgWarning)
 
 steps = [10, 25, 50, 75, 100, 150, 200]
 errors = []
-N_MODES     = 4
-METHOD      = "FROLS"   # Options: STRidge, FROLS
+N_MODES = 4
+METHOD = "FROLS"   # Options: STRidge, FROLS
 TRAIN_FRAC  = 0.3
 
 

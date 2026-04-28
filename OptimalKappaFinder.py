@@ -14,7 +14,7 @@ warnings.filterwarnings("ignore", category=LinAlgWarning)
 
 
 PRINT_XI    = False
-N_MODES     = 4
+N_MODES     = 7
 METHOD      = "FROLS"
 TRAIN_FRAC  = 0.3
 
@@ -72,7 +72,7 @@ def solve_wave_equation(
         u[n+1, -1] = u[n+1, 0]
 
     u_clean = u.copy()
-    noise = np.random.normal(0, 0.1, size=u.shape)
+    noise = np.random.normal(0, 0.01, size=u.shape)
     u_noisy = u_clean + noise
 
     u_fft = np.fft.fft(u_noisy, axis=1)
@@ -97,14 +97,6 @@ N_train = int(N_total * TRAIN_FRAC)
 
 a_train = a[:N_train]
 t_train = t[:N_train]
-
-
-def compute_time_derivative__(a, dt):
-    da = np.zeros_like(a)
-    da[1:-1] = (a[2:] - a[:-2]) / (2 * dt)
-    da[0] = (a[1]  - a[0])   / dt
-    da[-1] = (a[-1] - a[-2])  / dt
-    return da
 
 
 def compute_time_derivative(a, dt, window_length=45, polyorder=3):
