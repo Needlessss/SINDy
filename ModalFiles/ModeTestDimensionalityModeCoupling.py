@@ -3,30 +3,30 @@ import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 from pysindy.optimizers import FROLS
 
-
 import warnings
 from scipy.linalg import LinAlgWarning
+
 warnings.filterwarnings("ignore", category=LinAlgWarning)
 
 
 PLOTTING = True
-PLOT_MODES = False
+PLOT_MODES = True
 PRINT_XI = True
-n_modes = 15
+n_modes = 20
 TRAIN_FRAC = 0.3
 L = 2
 c = 1
 
 FROLS_MAX_ITER  = 1
-FROLS_ALPHA     = 0
-FROLS_KAPPA     = 0
+FROLS_ALPHA = 0
+FROLS_KAPPA = 0
 
 
 def compute_time_derivative(a, dt):
     da = np.zeros_like(a)
     da[1:-1] = (a[2:] - a[:-2]) / (2 * dt)
-    da[0] = (a[1]  - a[0])   / dt
-    da[-1] = (a[-1] - a[-2])  / dt
+    da[0]    = (a[1]  - a[0])   / dt
+    da[-1]   = (a[-1] - a[-2])  / dt
     return da
 
 
@@ -43,7 +43,6 @@ def solve_wave_equation_2d(
 
     X, Y = np.meshgrid(x, y, indexing='ij')
 
-    """Establish initial amplitude and velocity"""
     x0_disp, y0_disp = +0.2, +0.2
     u0 = np.exp(-((X - x0_disp)**2 + (Y - y0_disp)**2) / (2*sigma**2))
 
@@ -53,30 +52,21 @@ def solve_wave_equation_2d(
     u = np.zeros((n_steps+1, Nx+1, Ny+1))
     u[0] = u0
 
-    """Finite difference laplacian approximation
-    for u_xx + u_yy"""
     lap_u0 = (
         u0[2:, 1:-1] + u0[:-2, 1:-1] +
         u0[1:-1, 2:] + u0[1:-1, :-2] -
         4.0 * u0[1:-1, 1:-1]
     ) / dx**2
 
-    """Taylor expansion to approximate first step"""
     u[1, 1:-1, 1:-1] = (
         u0[1:-1, 1:-1]
         + dt * v0[1:-1, 1:-1]
         + 0.5 * dt**2 * c**2 * lap_u0
     )
-
-    """Apply periodic boundary conditions"""
-    u[1, 0, :] = u[1, -2, :]
-    u[1, -1, :] = u[1, 1, :]
-    u[1, :, 0] = u[1, :, -2]
-    u[1, :, -1] = u[1, :, 1]
+    u[1, 0, :]  = u[1, -2, :];  u[1, -1, :] = u[1, 1, :]
+    u[1, :, 0]  = u[1, :, -2];  u[1, :, -1] = u[1, :, 1]
 
     for n in range(1, n_steps):
-        """Use second order/laplacian finite difference
-        approximations for main stepping"""
         u[n+1, 1:-1, 1:-1] = (
             2.0 * u[n, 1:-1, 1:-1]
             - u[n-1, 1:-1, 1:-1]
@@ -86,11 +76,8 @@ def solve_wave_equation_2d(
                 4.0 * u[n, 1:-1, 1:-1]
             )
         )
-        """Apply periodic boundary conditions"""
-        u[n+1, 0, :] = u[n+1, -2, :]
-        u[n+1, -1, :] = u[n+1, 1, :]
-        u[n+1, :, 0] = u[n+1, :, -2]
-        u[n+1, :, -1] = u[n+1, :, 1]
+        u[n+1, 0, :]  = u[n+1, -2, :];  u[n+1, -1, :] = u[n+1, 1, :]
+        u[n+1, :, 0]  = u[n+1, :, -2];  u[n+1, :, -1] = u[n+1, :, 1]
 
     u_fft = np.fft.rfft2(u, axes=(1, 2))
     return x, y, t, u, u_fft, dx, dt
@@ -99,17 +86,20 @@ def solve_wave_equation_2d(
 x, y, t, u, modes, dx, dt = solve_wave_equation_2d()
 Nt = len(t)
 
-energy          = np.mean(np.abs(modes)**2, axis=0)
-Nx_fft, Ny_fft = energy.shape
-flat_energy     = energy.flatten()
-top_indices     = np.argsort(flat_energy)[-n_modes:]
-kx_idx, ky_idx  = np.unravel_index(top_indices, (Nx_fft, Ny_fft))
-selected_modes = list(zip(kx_idx, ky_idx))
-
-selected_modes = [(kx, ky) for kx, ky in selected_modes if not (kx == 0 and ky == 0)]
-
 Nx_grid = u.shape[1]
 Ny_grid = u.shape[2]
+
+energy = np.mean(np.abs(modes)**2, axis=0)
+Nx_fft, Ny_fft = energy.shape
+flat_energy = energy.flatten()
+top_indices = np.argsort(flat_energy)[-n_modes:]
+kx_idx, ky_idx = np.unravel_index(top_indices, (Nx_fft, Ny_fft))
+selected_modes = list(zip(kx_idx, ky_idx))
+selected_modes = [
+    (kx, ky) for kx, ky in selected_modes
+    if not (kx == 0 and ky == 0)
+]
+n_sel = len(selected_modes)
 
 
 def physical_k_sq(kx, ky, Nx_grid, Ny_grid, L):
@@ -128,68 +118,94 @@ U_reconstructed = np.fft.irfft2(
 N_train = int(Nt * TRAIN_FRAC)
 t_train = t[:N_train]
 
-all_Xi  = []
-all_sim = []
+print(f"Building stacked state matrix for {n_sel} modes  "
+      f"→ {4*n_sel}-dimensional joint system")
 
-print(f"Fitting SINDy")
-for idx, (kx, ky) in enumerate(selected_modes):
+state_cols = []
+dot_cols = []
 
-    a_r_raw = modes[:, kx, ky].real
-    a_i_raw = modes[:, kx, ky].imag
-
-    a_r = a_r_raw
-    a_i = a_i_raw
+for kx, ky in selected_modes:
+    a_r = modes[:, kx, ky].real
+    a_i = modes[:, kx, ky].imag
     v_r = compute_time_derivative(a_r, dt)
     v_i = compute_time_derivative(a_i, dt)
-    v_r_dot = compute_time_derivative(v_r, dt)
-    v_i_dot = compute_time_derivative(v_i, dt)
+    v_r_d = compute_time_derivative(v_r, dt)
+    v_i_d = compute_time_derivative(v_i, dt)
 
-    X_k = np.column_stack([a_r, a_i, v_r, v_i])
-    X_dot_k = np.column_stack([v_r, v_i, v_r_dot, v_i_dot])
+    state_cols.extend([a_r, a_i, v_r, v_i])
+    dot_cols.extend([v_r, v_i, v_r_d, v_i_d])
 
-    Theta_k = X_k [:N_train]
-    X_dot_k_train = X_dot_k [:N_train]
+X_full = np.column_stack(state_cols)
+X_dot_full = np.column_stack(dot_cols)
 
-    opt = FROLS(max_iter=FROLS_MAX_ITER, alpha=FROLS_ALPHA, kappa=FROLS_KAPPA)
+Theta_train = X_full[:N_train]
+X_dot_train = X_dot_full[:N_train]
 
-    opt.fit(Theta_k, X_dot_k_train)
-    Xi_k = opt.coef_.T
+print(np.shape(Theta_train))
 
-    all_Xi.append(Xi_k)
+print(f"Fitting single joint SINDy model  (library shape: {Theta_train.shape})")
 
-    if PRINT_XI:
+opt = FROLS(max_iter=FROLS_MAX_ITER, alpha=FROLS_ALPHA, kappa=FROLS_KAPPA)
+opt.fit(Theta_train, X_dot_train)
+
+Xi_full = opt.coef_.T
+
+if PRINT_XI:
+    labels = []
+    for kx, ky in selected_modes:
+        kx_w = kx if kx <= Nx_grid // 2 else kx - Nx_grid
+        ky_w = ky if ky <= Ny_grid // 2 else ky - Ny_grid
+        tag = f"({kx_w},{ky_w})"
+        labels += [f"ar{tag}", f"ai{tag}", f"vr{tag}", f"vi{tag}"]
+
+    col_w = max(len(l) for l in labels) + 2
+    row_lbl = max(len(l) for l in labels)
+
+    print(f"\nJoint coefficient matrix Xi_full  ({Xi_full.shape[0]}×{Xi_full.shape[1]})")
+    print("Rows = output  d(·)/dt  |  Cols = input feature")
+    print()
+
+    header = " " * (row_lbl + 3) + "".join(l.rjust(col_w) for l in labels)
+    print(header)
+    print(" " * (row_lbl + 3) + "-" * (col_w * len(labels)))
+
+    for row_idx, row_label in enumerate(labels):
+        row_vals = "".join(f"{Xi_full[row_idx, c]:>{col_w}.4f}" for c in range(len(labels)))
+        print(f"{row_label:>{row_lbl}}  |{row_vals}")
+
+    print("\nPer-mode diagonal blocks (recovered ω²):")
+    for idx, (kx, ky) in enumerate(selected_modes):
         kx_w = kx if kx <= Nx_grid // 2 else kx - Nx_grid
         ky_w = ky if ky <= Ny_grid // 2 else ky - Ny_grid
         kx_phys = (2 * np.pi / L) * kx_w
         ky_phys = (2 * np.pi / L) * ky_w
-        omega_sq_expected  = c ** 2 * (kx_phys ** 2 + ky_phys ** 2)
-        omega_sq_recovered_r = -Xi_k[0, 2]
-        omega_sq_recovered_i = -Xi_k[1, 3]
+        omega_sq_expected = c ** 2 * (kx_phys ** 2 + ky_phys ** 2)
         print(
-            f"mode (kx_idx={kx}, ky_idx={ky})  "
-            f"Xi =\n{np.round(Xi_k, 2)}\n"
-            f"Expected ω²: {omega_sq_expected:.4f}\n"
-            f"Recovered real:{omega_sq_recovered_r:.4f} imag:{omega_sq_recovered_i:.4f}\n"
+            f"  mode ({kx_w:+d},{ky_w:+d})  "
+            f"ω²_expected={omega_sq_expected:.4f}  "
         )
 
-    X0_k = np.array([a_r[0], a_i[0], v_r[0], v_i[0]])
+print("\nSimulating joint stacked system …")
 
-    def rhs(t_val, state, Xi=Xi_k):
-        return (state.reshape(1, -1) @ Xi).flatten()
+X0_full = X_full[0]
 
-    sol = solve_ivp(
-        rhs,
-        t_span=(t[0], t[-1]),
-        y0=X0_k,
-        t_eval=t,
-        method='RK45',
-        rtol=1e-9,
-        atol=1e-11,
-    )
-    all_sim.append(sol.y.T)
+def rhs_full(t_val, state, Xi=Xi_full):
+    return (state.reshape(1, -1) @ Xi).flatten()
 
-a_sim_real    = np.column_stack([sim[:, 0] for sim in all_sim])
-a_sim_imag    = np.column_stack([sim[:, 1] for sim in all_sim])
+sol = solve_ivp(
+    rhs_full,
+    t_span=(t[0], t[-1]),
+    y0=X0_full,
+    t_eval=t,
+    method='RK45',
+    rtol=1e-9,
+    atol=1e-11,
+)
+
+sim_full = sol.y.T
+
+a_sim_real = np.column_stack([sim_full[:, 4*i]     for i in range(n_sel)])
+a_sim_imag = np.column_stack([sim_full[:, 4*i + 1] for i in range(n_sel)])
 a_sim_complex = a_sim_real + 1j * a_sim_imag
 
 U_hat_sindy = np.zeros_like(modes, dtype=complex)
@@ -212,7 +228,7 @@ if PLOTTING:
                 [u[i], U_reconstructed[i], U_sindy[i]],
                 [f"True (step {i})",
                  f"Modal reconstruct (step {i})",
-                 f"SINDy forecast (step {i})"],
+                 f"SINDy joint forecast (step {i})"],
             ):
                 im = ax.imshow(
                     field.T, origin="lower",
@@ -227,14 +243,13 @@ if PLOTTING:
 if PLOT_MODES:
     for idx, (kx, ky) in enumerate(selected_modes):
         fig, ax = plt.subplots(figsize=(9, 3))
-        ax.plot(t,           a_true_real[:, idx],          color='black',    lw=1.5, label="True")
-        ax.plot(t[:N_train], a_sim_real[:N_train, idx], '--', color='steelblue', lw=1.5, label="SINDy (train)")
-        ax.plot(t[N_train:], a_sim_real[N_train:, idx], '--', color='tomato',    lw=1.5, label="SINDy (forecast)")
+        ax.plot(t, a_true_real[:, idx], color='black', lw=1.5, label="True")
+        ax.plot(t[:N_train], a_sim_real[:N_train, idx], '--', color='steelblue', lw=1.5, label="SINDy joint (train)")
+        ax.plot(t[N_train:], a_sim_real[N_train:, idx], '--', color='tomato', lw=1.5, label="SINDy joint (forecast)")
         ax.axvline(t[N_train], color='gray', linestyle=':', lw=1)
         kx_w = kx if kx <= Nx_grid // 2 else kx - Nx_grid
         ky_w = ky if ky <= Ny_grid // 2 else ky - Ny_grid
-        ax.set(xlabel="Time", ylabel="Amplitude",
-               title=f"Mode (kx_phys={kx_w}, ky_phys={ky_w})  [idx=({kx},{ky})]")
+        ax.set(xlabel="Time", ylabel="Amplitude", title=f"Mode (kx_phys={kx_w}, ky_phys={ky_w})  [idx=({kx},{ky})]")
         ax.legend(); ax.grid(True)
         plt.tight_layout(); plt.show()
 
