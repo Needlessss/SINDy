@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
 NU = 0.001
 X_LEFT = -5.0
@@ -81,3 +80,91 @@ ax2.grid(True)
 
 plt.tight_layout()
 plt.show()
+
+
+#Hell reigns below
+###################################################################
+
+PLOT_AMPLITUDES = True
+PLOTTING    = True
+PLOT_MODES  = True
+PRINT_XI    = True
+N_MODES     = 4
+TRAIN_FRAC  = 0.3
+
+t = t_history
+u = u_history
+n = len(x)
+
+
+print(f"U: {np.shape(u_history)}\nT: {np.shape(t_history)}")
+
+modes = np.fft.fft(u, axis=1)
+
+U_hat_filtered = np.zeros_like(modes, dtype=complex)
+U_hat_filtered[:, 1:N_MODES+1] = modes[:, 1:N_MODES+1]
+U_reconstructed = np.fft.ifft(U_hat_filtered, n=n, axis=1).real
+
+print(f"Reconstructed: {np.shape(U_reconstructed)}")
+
+a_complex = modes[:, 1:N_MODES+1]
+a_real = a_complex.real
+a_imag = a_complex.imag
+a = np.hstack([a_real, a_imag])
+
+if PLOT_MODES:
+    for mode in range(N_MODES):
+        fig, ax = plt.subplots(figsize=(8, 3))
+        ax.plot(t, a[:, mode])
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Mode amplitude")
+        ax.set_title(f"Mode {mode}")
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.show()
+
+N_total = len(t)
+N_train = int(N_total * TRAIN_FRAC)
+
+a_train = a[:N_train]
+t_train = t[:N_train]
+
+
+def compute_time_derivative(a, dt):
+    da = np.zeros_like(a)
+    da[1:-1] = (a[2:] - a[:-2]) / (2 * dt)
+    da[0] = (a[1]  - a[0])   / dt
+    da[-1] = (a[-1] - a[-2])  / dt
+    return da
+
+
+a_dot_train = compute_time_derivative(a_train, dt)
+v_train = a_dot_train
+v_dot_train = compute_time_derivative(v_train, dt)
+
+X_train     = np.hstack([a_train, v_train])
+X_dot_train = np.hstack([v_train, v_dot_train])
+
+
+def build_library(X):
+    n_cols  = X.shape[1]
+    library = [X[:, i] for i in range(n_cols)]
+    return np.column_stack(library)
+
+
+if PLOTTING:
+    fig1 = plt.figure(figsize=(11, 6))
+    Xm, Tm = np.meshgrid(x, t)
+
+    ax1 = fig1.add_subplot(1, 2, 1, projection='3d')
+    ax1.plot_surface(Xm, Tm, u, cmap='viridis')
+    ax1.set_xlabel('x'); ax1.set_ylabel('t'); ax1.set_zlabel('u(x, t)')
+    ax1.set_title('Burgers Equation Solution')
+
+    ax2 = fig1.add_subplot(1, 2, 2, projection='3d')
+    ax2.plot_surface(Xm, Tm, U_reconstructed, cmap='viridis')
+    ax2.set_xlabel('x'); ax2.set_ylabel('t'); ax2.set_zlabel('u(x, t)')
+    ax2.set_title(f'Reconstruction ({N_MODES} modes)')
+
+    plt.tight_layout()
+    plt.show()
