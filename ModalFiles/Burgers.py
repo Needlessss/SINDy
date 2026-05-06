@@ -1,16 +1,20 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 NU = 0.001
 X_LEFT = -5.0
 X_RIGHT =  5.0
 T_END =  5.0
 NX = 500
+PLOT_SLICES = False
 
 x  = np.linspace(X_LEFT, X_RIGHT, NX)
 dx = x[1] - x[0]
 dt = 0.45 * min(dx / 1.0, dx**2 / (2 * NU))
 NT = int(T_END / dt) + 1
+
+print(f'ν = {NU},  dx = {dx:.3f},  dt = {dt:.3f}')
 
 u = np.exp(-((x - 1)**2) / 2) - np.exp(-((x + 1)**2) / 2)
 
@@ -42,44 +46,27 @@ t_history.append(NT * dt)
 u_history = np.array(u_history)
 t_history = np.array(t_history)
 
-X_mesh, T_mesh = np.meshgrid(x, t_history)
+if PLOT_SLICES:
+    N_SLICES = 10
+    slice_ids = np.linspace(0, len(t_history) - 1, N_SLICES, dtype=int)
 
-fig = plt.figure(figsize=(10, 8))
-ax = fig.add_subplot(111, projection='3d')
+    fig2, ax2 = plt.subplots(figsize=(11, 6))
+    cmap_slices = plt.cm.viridis
+    colors = cmap_slices(np.linspace(0, 1, N_SLICES))
 
-surf = ax.plot_surface(X_mesh, T_mesh, u_history, cmap='plasma')
+    for colour, idx in zip(colors, slice_ids):
+        ax2.plot(x, u_history[idx], color=colour, label=f't = {t_history[idx]:.2f}')
 
-ax.set_xlabel('x')
-ax.set_ylabel('time t')
-ax.set_zlabel('u(x,t)')
-ax.set_title(f'1D Burgers Equation\n'
-             f'ν = {NU},  Δx = {dx:.4f},  Δt = {dt:.6f},  CFL ≈ {dt/dx:.3f}')
+    ax2.set_xlabel('x')
+    ax2.set_ylabel('u(x, t)')
+    ax2.set_title('1D Burgers Equation Time Slices')
 
-ax.view_init(elev=28, azim=-55)
-plt.tight_layout()
-plt.show()
+    ax2.legend(loc='upper right', title='Time')
+    ax2.set_xlim(X_LEFT, X_RIGHT)
+    ax2.grid(True)
 
-
-N_SLICES = 10
-slice_ids = np.linspace(0, len(t_history) - 1, N_SLICES, dtype=int)
-
-fig2, ax2 = plt.subplots(figsize=(11, 6))
-cmap_slices = plt.cm.viridis
-colors = cmap_slices(np.linspace(0, 1, N_SLICES))
-
-for colour, idx in zip(colors, slice_ids):
-    ax2.plot(x, u_history[idx], color=colour, label=f't = {t_history[idx]:.2f}')
-
-ax2.set_xlabel('x')
-ax2.set_ylabel('u(x, t)')
-ax2.set_title('1D Burgers Equation Time Slices')
-
-ax2.legend(loc='upper right', title='Time')
-ax2.set_xlim(X_LEFT, X_RIGHT)
-ax2.grid(True)
-
-plt.tight_layout()
-plt.show()
+    plt.tight_layout()
+    plt.show()
 
 
 #Hell reigns below
@@ -89,23 +76,20 @@ PLOT_AMPLITUDES = True
 PLOTTING    = True
 PLOT_MODES  = True
 PRINT_XI    = True
-N_MODES     = 4
+N_MODES     = 7
 TRAIN_FRAC  = 0.3
 
 t = t_history
 u = u_history
 n = len(x)
 
-
-print(f"U: {np.shape(u_history)}\nT: {np.shape(t_history)}")
+print(f"U Shape: {np.shape(u_history)}")
 
 modes = np.fft.fft(u, axis=1)
 
 U_hat_filtered = np.zeros_like(modes, dtype=complex)
 U_hat_filtered[:, 1:N_MODES+1] = modes[:, 1:N_MODES+1]
 U_reconstructed = np.fft.ifft(U_hat_filtered, n=n, axis=1).real
-
-print(f"Reconstructed: {np.shape(U_reconstructed)}")
 
 a_complex = modes[:, 1:N_MODES+1]
 a_real = a_complex.real
@@ -157,12 +141,12 @@ if PLOTTING:
     Xm, Tm = np.meshgrid(x, t)
 
     ax1 = fig1.add_subplot(1, 2, 1, projection='3d')
-    ax1.plot_surface(Xm, Tm, u, cmap='viridis')
+    ax1.plot_surface(Xm, Tm, u, cmap='plasma')
     ax1.set_xlabel('x'); ax1.set_ylabel('t'); ax1.set_zlabel('u(x, t)')
     ax1.set_title('Burgers Equation Solution')
 
     ax2 = fig1.add_subplot(1, 2, 2, projection='3d')
-    ax2.plot_surface(Xm, Tm, U_reconstructed, cmap='viridis')
+    ax2.plot_surface(Xm, Tm, U_reconstructed, cmap='plasma')
     ax2.set_xlabel('x'); ax2.set_ylabel('t'); ax2.set_zlabel('u(x, t)')
     ax2.set_title(f'Reconstruction ({N_MODES} modes)')
 
