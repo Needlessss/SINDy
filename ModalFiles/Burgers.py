@@ -10,7 +10,7 @@ from scipy.linalg import LinAlgWarning
 warnings.filterwarnings("ignore", category=LinAlgWarning)
 ################################################################################
 
-N_MODES    = 15
+N_MODES    = 10
 TRAIN_FRAC = 0.5
 
 PLOT_SLICES     = True
@@ -192,7 +192,8 @@ def compute_fourier_nonlinearity(a_complex_slice, a0_slice, k_positive, NX, dx):
                 km = k_idx - m
                 if m in modes_dict and km in modes_dict:
                     s += modes_dict[m] * modes_dict[km]
-            nonlinear[t_idx, j] = -1j * s / NX
+            #nonlinear[t_idx, j] = -1j * s / NX
+            nonlinear[t_idx, j] = s
 
     return nonlinear
 
@@ -201,14 +202,13 @@ def build_global_library(a_complex_slice, a0_slice, k_positive, NX, dx):
     nonlinear = compute_fourier_nonlinearity(
         a_complex_slice, a0_slice, k_positive, NX, dx
     )
-    diffusion = -(k_positive[np.newaxis, :] ** 2) * a_complex_slice
     columns, labels = [], []
     for k in range(len(k_positive)):
-        #columns.append(nonlinear[:, k])
-        #labels.append(f"NL_k{k+1}")
+        columns.append(nonlinear[:, k])
+        labels.append(f"NL_k{k+1}")
 
-        columns += [diffusion[:, k], nonlinear[:, k]]
-        labels  += [f"diff_k{k+1}", f"NL_k{k+1}"]
+        #columns += [diffusion[:, k], nonlinear[:, k]]
+        #labels  += [f"diff_k{k+1}", f"NL_k{k+1}"]
 
     return np.column_stack(columns), labels
 

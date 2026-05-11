@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-from PDE_FIND import STRidge
 from pysindy.optimizers import FROLS
 
 #Disable this if you aren't certain ill conditioned matrices won't cause you issues
@@ -12,12 +11,12 @@ warnings.filterwarnings("ignore", category=LinAlgWarning)
 ################################################################################
 
 
-PLOT_AMPLITUDES = True
+PLOT_AMPLITUDES = False
 PLOTTING    = True
 PLOT_MODES  = True
 PRINT_XI    = True
 N_MODES     = 4
-METHOD      = "FROLS"   # Options: STRidge, FROLS
+METHOD      = "FROLS"
 TRAIN_FRAC  = 0.3
 
 
@@ -57,7 +56,6 @@ def solve_wave_equation(
     )
     u[1, -1] = u[1, 0]
 
-
     for n in range(1, n_steps):
         u[n+1, 1:-1] = (
             2*u[n, 1:-1]
@@ -83,10 +81,7 @@ U_hat_filtered = np.zeros_like(modes, dtype=complex)
 U_hat_filtered[:, 1:N_MODES+1] = modes[:, 1:N_MODES+1]
 U_reconstructed = np.fft.ifft(U_hat_filtered, n=n, axis=1).real
 
-a_complex = modes[:, 1:N_MODES+1]
-a_real = a_complex.real
-a_imag = a_complex.imag
-a = np.hstack([a_real, a_imag])
+a = modes[:, 1:N_MODES+1]
 
 N_total = len(t)
 N_train = int(N_total * TRAIN_FRAC)
@@ -98,49 +93,32 @@ t_train = t[:N_train]
 def compute_time_derivative(a, dt):
     da = np.zeros_like(a)
     da[1:-1] = (a[2:] - a[:-2]) / (2 * dt)
-    da[0] = (a[1]  - a[0])   / dt
-    da[-1] = (a[-1] - a[-2])  / dt
+    da[0]    = (a[1]  - a[0])   / dt
+    da[-1]   = (a[-1] - a[-2])  / dt
     return da
 
 
-a_dot_train = compute_time_derivative(a_train, dt)
-v_train = a_dot_train
-v_dot_train = compute_time_derivative(v_train, dt)
+a_dot_train  = compute_time_derivative(a_train, dt)
+v_train      = a_dot_train
+v_dot_train  = compute_time_derivative(v_train, dt)
 
-X_train     = np.hstack([a_train, v_train])
-X_dot_train = np.hstack([v_train, v_dot_train])
+X_train      = np.hstack([a_train, v_train])
+X_dot_train  = np.hstack([v_train, v_dot_train])
 
 
 def build_library(X):
-    n_cols  = X.shape[1]
-    library = [X[:, i] for i in range(n_cols)]
-    return np.column_stack(library)
+    return np.column_stack([X[:, i] for i in range(X.shape[1])])
 
 
 Theta_train = build_library(X_train)
 
-if METHOD == "STRidge":
-    lam   = 0
-    tol   = 1e-1
-    maxit = int(1e6)
-    Xi    = np.zeros((Theta_train.shape[1], X_dot_train.shape[1]))
-    for i in range(X_dot_train.shape[1]):
-        Xi[:, i] = STRidge(
-            Theta_train,
-            X_dot_train[:, i],
-            lam,
-            maxit,
-            tol,
-            normalize=0
-        ).flatten()
-
 if METHOD == "FROLS":
     opt = FROLS(max_iter=1, alpha=0, kappa=3e-13)
     opt.fit(Theta_train, X_dot_train)
-    Xi = opt.coef_.T
+    Xi = opt.coef_.T.astype(complex)
 
 if PRINT_XI:
-    for i in range(4*N_MODES):
+    for i in range(2 * N_MODES):
         formatted = [f"{num:.6f}" for num in Xi[:, i]]
         print(f"Equation {i}: {formatted}")
 
@@ -165,27 +143,33 @@ sol = solve_ivp(
 )
 
 X_sim = sol.y.T
-a_sim = X_sim[:, :2*N_MODES]
-a_sim_real = a_sim[:, :N_MODES]
-a_sim_imag = a_sim[:, N_MODES:]
-a_sim_complex = a_sim_real + 1j * a_sim_imag
+a_sim = X_sim[:, :N_MODES]
 
 U_hat_sindy = np.zeros_like(modes, dtype=complex)
-U_hat_sindy[:, 1:N_MODES+1] = a_sim_complex
+U_hat_sindy[:, 1:N_MODES+1] = a_sim
 U_sindy = np.fft.ifft(U_hat_sindy, n=n, axis=1).real
 
 if PLOT_MODES:
-    for mode in range(N_MODES):
-        fig, ax = plt.subplots(figsize=(8, 3))
-        ax.plot(t, a[:, mode], color='black', label="True")
-        ax.plot(t[:N_train], a_sim_real[:N_train, mode], '--', color='steelblue', label="SINDy (train)")
-        ax.plot(t[N_train:], a_sim_real[N_train:, mode], '--', color='tomato',    label="SINDy (forecast)")
-        ax.axvline(t[N_train], color='gray', linestyle=':', linewidth=1)
+    for k in range(N_MODES):
+        fig, ax = plt.subplots(figsize=(9, 3))
+
+        ax.plot(t, a[:, k].real,
+                color="black", label="True (Re)")
+        ax.plot(t, a_sim[:, k].real, "--",
+                color="steelblue", label="SINDy (Re)")
+        ax.plot(t, a[:, k].imag,
+                color="gray", label="True (Im)", alpha=0.6)
+        ax.plot(t, a_sim[:, k].imag, ":",
+                color="salmon", label="SINDy (Im)", alpha=0.9)
+
+        ax.axvline(t[N_train], color="k", linestyle=":",
+                   alpha=0.5, label="Train | Test")
+
         ax.set_xlabel("Time")
-        ax.set_ylabel("Mode amplitude")
-        ax.set_title(f"Mode {mode} — {METHOD}")
-        ax.legend()
+        ax.set_ylabel("Amplitude")
+        ax.set_title(f"Mode {k+1})")
         ax.grid(True, alpha=0.3)
+        ax.legend(ncol=2, fontsize=8)
         plt.tight_layout()
         plt.show()
 
@@ -239,14 +223,10 @@ print("\nSINDy-Modal MSE:", np.mean((U_reconstructed - U_sindy) ** 2))
 print("Modal-True  MSE:", np.mean((u - U_reconstructed) ** 2))
 print("SINDy-True  MSE:", np.mean((u - U_sindy) ** 2))
 
-#Test on different initial condition
 x_test, t_test, u_test, dx_test, dt_test, modes_test = solve_wave_equation(ic=sin_ic)
 n_test = len(x_test)
 
-a_complex_test = modes_test[:, 1:N_MODES+1]
-a_real_test = a_complex_test.real
-a_imag_test = a_complex_test.imag
-a_test = np.hstack([a_real_test, a_imag_test])
+a_test = modes_test[:, 1:N_MODES+1]
 
 a0_test = a_test[0]
 v0_test = compute_time_derivative(a_test, dt_test)[0]
@@ -261,14 +241,11 @@ sol_test = solve_ivp(
 )
 
 X_sim_test = sol_test.y.T
-a_sim_test = X_sim_test[:, :2*N_MODES]
-a_sim_real_test = a_sim_test[:, :N_MODES]
-a_sim_imag_test = a_sim_test[:, N_MODES:]
-a_sim_complex_test = a_sim_real_test + 1j * a_sim_imag_test
+a_sim_test = X_sim_test[:, :N_MODES]
 
 U_hat_sindy_test = np.zeros_like(modes_test, dtype=complex)
-U_hat_sindy_test[:, 1:N_MODES+1] = a_sim_complex_test
-U_sindy_test = np.fft.ifft(U_hat_sindy_test, n=len(x), axis=1).real
+U_hat_sindy_test[:, 1:N_MODES+1] = a_sim_test
+U_sindy_test = np.fft.ifft(U_hat_sindy_test, n=n_test, axis=1).real
 
 U_hat_true_test = np.zeros_like(modes_test, dtype=complex)
 U_hat_true_test[:, 1:N_MODES+1] = modes_test[:, 1:N_MODES+1].copy()
