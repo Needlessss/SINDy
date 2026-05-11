@@ -10,14 +10,15 @@ from scipy.linalg import LinAlgWarning
 warnings.filterwarnings("ignore", category=LinAlgWarning)
 ################################################################################
 
-N_MODES    = 10
+N_MODES    = 15
 TRAIN_FRAC = 0.5
 
 PLOT_SLICES     = True
-PLOT_MODES      = True
+PLOT_MODES      = False
 PLOTTING        = True
 PLOT_AMPLITUDES = True
 
+METHOD = "FROLS"
 
 def CFLcondition(u, dx, CFLcoe):
     toll = 1e-10
@@ -67,7 +68,7 @@ x = np.linspace(x0 - dx/2, x0 + L + dx/2, nc + 2)
 u = np.zeros(nc + 2)
 
 NX = len(x)
-tend = 1000
+tend = 1500
 CFLcoe = 0.9
 t = 0.0
 
@@ -98,7 +99,6 @@ print(testname)
 
 u[x <= x0 + L/2] = uL
 u[x > x0 + L/2] = uR
-
 
 u_history = [u.copy()]
 t_history = [t]
@@ -141,7 +141,6 @@ if PLOT_SLICES:
     plt.tight_layout()
     plt.show()
 
-
 modes = np.fft.fft(u_history, axis=1)
 
 if PLOT_AMPLITUDES:
@@ -162,150 +161,134 @@ if PLOT_AMPLITUDES:
     plt.tight_layout()
     plt.show()
 
-a_complex = modes[:, 1:N_MODES+1]
-a = np.hstack([a_complex.real, a_complex.imag])
+a = modes[:, 1:N_MODES+1]
 
-k_full = 2 * np.pi * np.fft.fftfreq(NX, d=dx)
+k_full     = 2 * np.pi * np.fft.fftfreq(NX, d=dx)
 k_positive = k_full[1:N_MODES+1]
 
 N_total = len(t_history)
 N_train = int(TRAIN_FRAC * N_total)
 
 a_train = a[:N_train]
-a_complex_train = a_complex[:N_train]
 t_train = t_history[:N_train]
 
 
-def compute_time_derivative(a, dt):
-    da = np.zeros_like(a)
-    da[1:-1] = (a[2:] - a[:-2]) / (2 * dt)
-    da[0]    = (-3*a[0]  + 4*a[1]  - a[2])  / (2 * dt)
-    da[-1]   = ( 3*a[-1] - 4*a[-2] + a[-3]) / (2 * dt)
-    return da
-
-
-a_dot_train = compute_time_derivative(a_train, dt)
-
-
-def compute_fourier_nonlinearity(a_complex_slice, k_positive):
+def compute_fourier_nonlinearity(a_complex_slice, a0_slice, k_positive, NX, dx):
+    L = NX * dx
     N_time, K = a_complex_slice.shape
-    nonlinear  = np.zeros_like(a_complex_slice, dtype=complex)
+    nonlinear = np.zeros_like(a_complex_slice, dtype=complex)
 
     for t_idx in range(N_time):
-        modes_dict = {0: 0.0 + 0.0j}
+        modes_dict = {0: a0_slice[t_idx]}
         for j in range(K):
             val = a_complex_slice[t_idx, j]
-            modes_dict[j+1]  = val
+            modes_dict[j+1] = val
             modes_dict[-(j+1)] = np.conj(val)
 
         for j in range(K):
             k_idx = j + 1
             s = 0.0 + 0.0j
-            for m in range(-K, K+1):
+            for m in range(-K, K + 1):
                 km = k_idx - m
                 if m in modes_dict and km in modes_dict:
                     s += modes_dict[m] * modes_dict[km]
-            nonlinear[t_idx, j] = -0.5j * k_positive[j] * s
+            nonlinear[t_idx, j] = -1j * s / NX
 
     return nonlinear
 
 
-def build_global_library(a_complex_slice, k_positive):
-    K = len(k_positive)
-    diffusion = -(k_positive[np.newaxis, :] ** 2) * a_complex_slice  # (N_time, K)
-    nonlinear = compute_fourier_nonlinearity(a_complex_slice, k_positive)
+def build_global_library(a_complex_slice, a0_slice, k_positive, NX, dx):
+    nonlinear = compute_fourier_nonlinearity(
+        a_complex_slice, a0_slice, k_positive, NX, dx
+    )
+    diffusion = -(k_positive[np.newaxis, :] ** 2) * a_complex_slice
+    columns, labels = [], []
+    for k in range(len(k_positive)):
+        #columns.append(nonlinear[:, k])
+        #labels.append(f"NL_k{k+1}")
 
-    columns = []
-    labels = []
-    for k in range(K):
-        columns += [
-            diffusion[:, k].real,
-            diffusion[:, k].imag,
-            nonlinear[:, k].real,
-            nonlinear[:, k].imag,
-        ]
-        labels += [
-            f"Re(diff_k{k + 1})",
-            f"Im(diff_k{k + 1})",
-            f"Re(NL_k{k + 1})",
-            f"Im(NL_k{k + 1})",
-        ]
+        columns += [diffusion[:, k], nonlinear[:, k]]
+        labels  += [f"diff_k{k+1}", f"NL_k{k+1}"]
 
     return np.column_stack(columns), labels
 
 
-Theta_train, lib_labels = build_global_library(a_complex_train, k_positive)
+a_dot_train = np.gradient(a_train, t_train, axis=0)
+
+a0_all   = modes[:, 0]
+a0_train = a0_all[:N_train]
+Theta_train, lib_labels = build_global_library(
+    a_train, a0_train, k_positive, NX, dx
+)
 
 print(f"\nLibrary shape : {Theta_train.shape}  ({len(lib_labels)} terms × {N_train} samples)")
-print(f"Target  shape : {a_dot_train.shape}  ({2*N_MODES} outputs)\n")
+print(f"Target  shape : {a_dot_train.shape}  ({N_MODES} complex outputs)\n")
 
-opt = FROLS(max_iter=2, alpha=0, kappa=0)
-opt.fit(Theta_train, a_dot_train)
+if METHOD == "FROLS":
+    opt = FROLS(max_iter=1, alpha=0, kappa=0)
+    opt.fit(Theta_train, a_dot_train)
 
-Xi = opt.coef_.T
+    Xi = opt.coef_.T
 
 print(f"Xi shape: {Xi.shape}")
 print(f"\n{'Output':<22} {'Selected library terms'}")
 print("-" * 70)
 
-output_labels = (
-        [f"d Re(â_k{k + 1})/dt" for k in range(N_MODES)] +
-        [f"d Im(â_k{k + 1})/dt" for k in range(N_MODES)]
-)
+output_labels = [f"dâ_k{k+1}/dt" for k in range(N_MODES)]
 
 for col_idx, out_label in enumerate(output_labels):
-    selected = [lib_labels[i] for i in range(len(lib_labels))
-                if Xi[i, col_idx] != 0]
+    selected = [
+        f"{lib_labels[i]} ({Xi[i, col_idx]:.6g})"
+        for i in range(len(lib_labels))
+        if Xi[i, col_idx] != 0
+    ]
+
     print(f"  {out_label:<20}  {', '.join(selected) if selected else '(none)'}")
 
 
-def sindy_rhs_ivp(t_val, X, Xi, k_positive):
-    N_m = Xi.shape[1] // 2
-    a_re = X[:N_m]
-    a_im = X[N_m:]
-    a_complex = (a_re + 1j * a_im).reshape(1, N_m)
-
-    Theta, _ = build_global_library(a_complex, k_positive)  # (1, 4*N_m)
-    rhs = (Theta @ Xi).flatten()  # (2*N_m,)
-    return rhs
+def sindy_rhs_ivp(t_val, X, Xi, k_positive, a0_const, NX, dx):
+    a_complex = X.reshape(1, -1)
+    a0        = np.array([a0_const])
+    Theta, _  = build_global_library(a_complex, a0, k_positive, NX, dx)
+    return (Theta @ Xi).flatten()
 
 
+a0_const = modes[0, 0]
 X0 = a[0]
 
 sol = solve_ivp(
-    fun=lambda t_val, X: sindy_rhs_ivp(t_val, X, Xi, k_positive),
+    fun=lambda t_val, X: sindy_rhs_ivp(t_val, X, Xi, k_positive, a0_const, NX, dx),
     t_span=(t_history[0], t_history[-1]),
     y0=X0,
     t_eval=t_history,
     method="RK45",
 )
 
-X_sim = sol.y.T
-a_sim_re = X_sim[:, :N_MODES]
-a_sim_im = X_sim[:, N_MODES:]
-a_sim_complex = a_sim_re + 1j * a_sim_im
+a_sim_complex = sol.y.T
 
 U_hat_sindy = np.zeros((len(t_history), NX), dtype=complex)
-U_hat_sindy[:, 1:N_MODES+1]        = a_sim_complex
-U_hat_sindy[:, NX-N_MODES:NX]      = np.conj(a_sim_complex[:, ::-1])
+U_hat_sindy[:, 1:N_MODES+1] = a_sim_complex
+U_hat_sindy[:, 0]  = modes[:, 0]
+U_hat_sindy[:, NX-N_MODES:NX]  = np.conj(a_sim_complex[:, ::-1])
 U_sindy = np.fft.ifft(U_hat_sindy, axis=1).real
 
 U_hat_filtered = np.zeros((len(t_history), NX), dtype=complex)
-U_hat_filtered[:, 1:N_MODES+1]     = a_complex
-U_hat_filtered[:, NX-N_MODES:NX]   = np.conj(a_complex[:, ::-1])
+U_hat_filtered[:, 1:N_MODES+1] = a
+U_hat_filtered[:, 0]  = modes[:, 0]
+U_hat_filtered[:, NX-N_MODES:NX] = np.conj(a[:, ::-1])
 U_reconstructed = np.fft.ifft(U_hat_filtered, axis=1).real
 
 if PLOT_MODES:
     for k in range(N_MODES):
         fig, ax = plt.subplots(figsize=(9, 3))
 
-        ax.plot(t_history, a[:, k],
+        ax.plot(t_history, a[:, k].real,
                 color="black",    label="True (Re)")
-        ax.plot(t_history, a_sim_re[:, k], "--",
+        ax.plot(t_history, a_sim_complex[:, k].real, "--",
                 color="steelblue", label="SINDy (Re)")
-        ax.plot(t_history, a[:, N_MODES + k],
+        ax.plot(t_history, a[:, k].imag,
                 color="gray",     label="True (Im)", alpha=0.6)
-        ax.plot(t_history, a_sim_im[:, k], ":",
+        ax.plot(t_history, a_sim_complex[:, k].imag, ":",
                 color="salmon",   label="SINDy (Im)", alpha=0.9)
 
         ax.axvline(t_history[N_train], color="k", linestyle=":",
@@ -313,7 +296,7 @@ if PLOT_MODES:
 
         ax.set_xlabel("Time")
         ax.set_ylabel("Amplitude")
-        ax.set_title(f"Mode {k+1}  (k = {k_positive[k]:.3f})")
+        ax.set_title(f"Mode {k+1} (k = {k_positive[k]:.3f})")
         ax.grid(True, alpha=0.3)
         ax.legend(ncol=2, fontsize=8)
         plt.tight_layout()
@@ -346,3 +329,7 @@ if PLOTTING:
 
     plt.tight_layout()
     plt.show()
+
+print("\nSINDy-Modal MSE:", np.mean((U_reconstructed - U_sindy) ** 2))
+print("Modal-True  MSE:", np.mean((u - U_reconstructed) ** 2))
+print("SINDy-True  MSE:", np.mean((u - U_sindy) ** 2))
