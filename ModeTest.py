@@ -12,12 +12,12 @@ warnings.filterwarnings("ignore", category=LinAlgWarning)
 
 
 PLOT_AMPLITUDES = False
-PLOTTING    = True
-PLOT_MODES  = True
-PRINT_XI    = True
-N_MODES     = 4
-METHOD      = "FROLS"
-TRAIN_FRAC  = 0.3
+PLOTTING = True
+PLOT_MODES = True
+PRINT_XI = True
+N_MODES = 4
+METHOD = "FROLS"
+TRAIN_FRAC = 0.3
 
 
 def sin_ic(x, L):
@@ -50,7 +50,7 @@ def solve_wave_equation(
         u[0, 1:-1]
         + 0.5 * r**2 * (u[0, 2:] - 2*u[0, 1:-1] + u[0, :-2])
     )
-    u[1, 0]  = (
+    u[1, 0] = (
         u[0, 0]
         + 0.5 * r**2 * (u[0, 1] - 2*u[0, 0] + u[0, -2])
     )
@@ -77,11 +77,13 @@ def solve_wave_equation(
 x, t, u, dx, dt, modes = solve_wave_equation()
 n = len(x)
 
+a = modes[:, 1:N_MODES+1]
+
 U_hat_filtered = np.zeros_like(modes, dtype=complex)
 U_hat_filtered[:, 1:N_MODES+1] = modes[:, 1:N_MODES+1]
+U_hat_filtered[:, 0] = modes[:, 0]
+U_hat_filtered[:, n-N_MODES:n] = np.conj(a[:, ::-1])
 U_reconstructed = np.fft.ifft(U_hat_filtered, n=n, axis=1).real
-
-a = modes[:, 1:N_MODES+1]
 
 N_total = len(t)
 N_train = int(N_total * TRAIN_FRAC)
@@ -93,17 +95,17 @@ t_train = t[:N_train]
 def compute_time_derivative(a, dt):
     da = np.zeros_like(a)
     da[1:-1] = (a[2:] - a[:-2]) / (2 * dt)
-    da[0]    = (a[1]  - a[0])   / dt
-    da[-1]   = (a[-1] - a[-2])  / dt
+    da[0] = (a[1]  - a[0]) / dt
+    da[-1] = (a[-1] - a[-2]) / dt
     return da
 
 
-a_dot_train  = compute_time_derivative(a_train, dt)
-v_train      = a_dot_train
-v_dot_train  = compute_time_derivative(v_train, dt)
+a_dot_train = compute_time_derivative(a_train, dt)
+v_train = a_dot_train
+v_dot_train = compute_time_derivative(v_train, dt)
 
-X_train      = np.hstack([a_train, v_train])
-X_dot_train  = np.hstack([v_train, v_dot_train])
+X_train = np.hstack([a_train, v_train])
+X_dot_train = np.hstack([v_train, v_dot_train])
 
 
 def build_library(X):
@@ -147,6 +149,8 @@ a_sim = X_sim[:, :N_MODES]
 
 U_hat_sindy = np.zeros_like(modes, dtype=complex)
 U_hat_sindy[:, 1:N_MODES+1] = a_sim
+U_hat_sindy[:, 0] = modes[:, 0]
+U_hat_sindy[:, n-N_MODES:n] = np.conj(a_sim[:, ::-1])
 U_sindy = np.fft.ifft(U_hat_sindy, n=n, axis=1).real
 
 if PLOT_MODES:
@@ -220,8 +224,8 @@ if PLOTTING:
     plt.show()
 
 print("\nSINDy-Modal MSE:", np.mean((U_reconstructed - U_sindy) ** 2))
-print("Modal-True  MSE:", np.mean((u - U_reconstructed) ** 2))
-print("SINDy-True  MSE:", np.mean((u - U_sindy) ** 2))
+print("Modal-True MSE:", np.mean((u - U_reconstructed) ** 2))
+print("SINDy-True MSE:", np.mean((u - U_sindy) ** 2))
 
 x_test, t_test, u_test, dx_test, dt_test, modes_test = solve_wave_equation(ic=sin_ic)
 n_test = len(x_test)
@@ -245,14 +249,11 @@ a_sim_test = X_sim_test[:, :N_MODES]
 
 U_hat_sindy_test = np.zeros_like(modes_test, dtype=complex)
 U_hat_sindy_test[:, 1:N_MODES+1] = a_sim_test
+U_hat_sindy[:, 0] = modes_test[:, 0]
+U_hat_sindy[:, n_test-N_MODES:n_test] = np.conj(a_sim_test[:, ::-1])
 U_sindy_test = np.fft.ifft(U_hat_sindy_test, n=n_test, axis=1).real
 
-U_hat_true_test = np.zeros_like(modes_test, dtype=complex)
-U_hat_true_test[:, 1:N_MODES+1] = modes_test[:, 1:N_MODES+1].copy()
-U_reconstructed_test = np.fft.ifft(U_hat_true_test, n=n_test, axis=1).real
-
 print("\nSINDy-True MSE (test IC):", np.mean((u_test - U_sindy_test)**2))
-print("Modal-True MSE (test IC):", np.mean((u_test - U_reconstructed_test)**2))
 
 if PLOTTING:
     fig1 = plt.figure(figsize=(14, 6))

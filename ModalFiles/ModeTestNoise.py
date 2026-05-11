@@ -13,12 +13,12 @@ warnings.filterwarnings("ignore", category=LinAlgWarning)
 
 
 PLOT_AMPLITUDES = True
-PLOTTING    = True
-PLOT_MODES  = True
-PRINT_XI    = True
-N_MODES     = 4
-METHOD      = "FROLS"
-TRAIN_FRAC  = 0.3
+PLOTTING = True
+PLOT_MODES = True
+PRINT_XI = True
+N_MODES = 4
+METHOD = "FROLS"
+TRAIN_FRAC = 0.3
 
 
 def sin_ic(x, L):
@@ -51,7 +51,7 @@ def solve_wave_equation(
         u[0, 1:-1]
         + 0.5 * r**2 * (u[0, 2:] - 2*u[0, 1:-1] + u[0, :-2])
     )
-    u[1, 0]  = (
+    u[1, 0] = (
         u[0, 0]
         + 0.5 * r**2 * (u[0, 1] - 2*u[0, 0] + u[0, -2])
     )
@@ -130,7 +130,7 @@ def compute_time_derivative_(a, dt):
 
 a_dot_train = compute_time_derivative(a_train, dt)
 v_train = a_dot_train
-v_dot_train  = compute_time_derivative(v_train, dt)
+v_dot_train = compute_time_derivative(v_train, dt)
 
 X_train = np.hstack([a_train, v_train])
 X_dot_train = np.hstack([v_train, v_dot_train])
@@ -251,8 +251,8 @@ if PLOTTING:
     plt.show()
 
 print("\nSINDy-Modal MSE:", np.mean((U_reconstructed - U_sindy) ** 2))
-print("Modal-True  MSE:", np.mean((u - U_reconstructed) ** 2))
-print("SINDy-True  MSE:", np.mean((u - U_sindy) ** 2))
+print("Modal-True MSE:", np.mean((u - U_reconstructed) ** 2))
+print("SINDy-True MSE:", np.mean((u - U_sindy) ** 2))
 
 x_test, t_test, u_test, dx_test, dt_test, modes_test = solve_wave_equation(ic=sin_ic)
 n_test = len(x_test)

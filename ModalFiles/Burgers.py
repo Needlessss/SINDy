@@ -10,15 +10,16 @@ from scipy.linalg import LinAlgWarning
 warnings.filterwarnings("ignore", category=LinAlgWarning)
 ################################################################################
 
-N_MODES    = 10
+N_MODES = 15
 TRAIN_FRAC = 0.5
 
-PLOT_SLICES     = True
-PLOT_MODES      = False
-PLOTTING        = True
+PLOT_SLICES = True
+PLOT_MODES = False
+PLOTTING = True
 PLOT_AMPLITUDES = True
 
 METHOD = "FROLS"
+
 
 def CFLcondition(u, dx, CFLcoe):
     toll = 1e-10
@@ -72,7 +73,7 @@ tend = 1500
 CFLcoe = 0.9
 t = 0.0
 
-itest = 1
+itest = 4
 
 if itest == 1:
     testname = "Right Rarefaction"
@@ -122,11 +123,11 @@ u_history = np.array(u_history)
 t_history = np.array(t_history)
 
 if PLOT_SLICES:
-    N_SLICES  = 5
+    N_SLICES = 5
     slice_ids = np.linspace(0, len(t_history) - 1, N_SLICES, dtype=int)
 
     fig, ax = plt.subplots(figsize=(11, 6))
-    colors  = plt.cm.viridis(np.linspace(0, 1, N_SLICES))
+    colors = plt.cm.viridis(np.linspace(0, 1, N_SLICES))
 
     for colour, idx in zip(colors, slice_ids):
         ax.plot(x, u_history[idx], color=colour,
@@ -163,7 +164,7 @@ if PLOT_AMPLITUDES:
 
 a = modes[:, 1:N_MODES+1]
 
-k_full     = 2 * np.pi * np.fft.fftfreq(NX, d=dx)
+k_full = 2 * np.pi * np.fft.fftfreq(NX, d=dx)
 k_positive = k_full[1:N_MODES+1]
 
 N_total = len(t_history)
@@ -192,6 +193,8 @@ def compute_fourier_nonlinearity(a_complex_slice, a0_slice, k_positive, NX, dx):
                 km = k_idx - m
                 if m in modes_dict and km in modes_dict:
                     s += modes_dict[m] * modes_dict[km]
+                    #k_m = 2.0 * np.pi * m / L
+                    #s += k_m * modes_dict[m] * modes_dict[km]
             #nonlinear[t_idx, j] = -1j * s / NX
             nonlinear[t_idx, j] = s
 
@@ -202,20 +205,22 @@ def build_global_library(a_complex_slice, a0_slice, k_positive, NX, dx):
     nonlinear = compute_fourier_nonlinearity(
         a_complex_slice, a0_slice, k_positive, NX, dx
     )
+    second_partial = -(k_positive[np.newaxis, :] ** 2) * a_complex_slice
+    first_partial = 1j * k_positive[np.newaxis, :] * a_complex_slice
     columns, labels = [], []
     for k in range(len(k_positive)):
-        columns.append(nonlinear[:, k])
-        labels.append(f"NL_k{k+1}")
+        #columns.append(nonlinear[:, k])
+        #labels.append(f"NL_k{k+1}")
 
-        #columns += [diffusion[:, k], nonlinear[:, k]]
-        #labels  += [f"diff_k{k+1}", f"NL_k{k+1}"]
+        columns += [first_partial[:, k], second_partial[:, k], nonlinear[:, k]]
+        labels  += [f"du/dx_k{k+1}", f"d2u/dx2_k{k+1}", f"u(du/dx)_k{k+1}"]
 
     return np.column_stack(columns), labels
 
 
 a_dot_train = np.gradient(a_train, t_train, axis=0)
 
-a0_all   = modes[:, 0]
+a0_all = modes[:, 0]
 a0_train = a0_all[:N_train]
 Theta_train, lib_labels = build_global_library(
     a_train, a0_train, k_positive, NX, dx
@@ -248,8 +253,8 @@ for col_idx, out_label in enumerate(output_labels):
 
 def sindy_rhs_ivp(t_val, X, Xi, k_positive, a0_const, NX, dx):
     a_complex = X.reshape(1, -1)
-    a0        = np.array([a0_const])
-    Theta, _  = build_global_library(a_complex, a0, k_positive, NX, dx)
+    a0 = np.array([a0_const])
+    Theta, _ = build_global_library(a_complex, a0, k_positive, NX, dx)
     return (Theta @ Xi).flatten()
 
 
@@ -268,7 +273,7 @@ a_sim_complex = sol.y.T
 
 U_hat_sindy = np.zeros((len(t_history), NX), dtype=complex)
 U_hat_sindy[:, 1:N_MODES+1] = a_sim_complex
-U_hat_sindy[:, 0]  = modes[:, 0]
+U_hat_sindy[:, 0]  = np.full(modes[:, 0].shape, modes[0, 0])
 U_hat_sindy[:, NX-N_MODES:NX]  = np.conj(a_sim_complex[:, ::-1])
 U_sindy = np.fft.ifft(U_hat_sindy, axis=1).real
 
@@ -302,7 +307,7 @@ if PLOT_MODES:
         plt.tight_layout()
         plt.show()
 
-azim_val = 15
+azim_val = -15
 
 if PLOTTING:
     Xm, Tm = np.meshgrid(x, t_history)
@@ -331,5 +336,93 @@ if PLOTTING:
     plt.show()
 
 print("\nSINDy-Modal MSE:", np.mean((U_reconstructed - U_sindy) ** 2))
-print("Modal-True  MSE:", np.mean((u - U_reconstructed) ** 2))
-print("SINDy-True  MSE:", np.mean((u - U_sindy) ** 2))
+print("Modal-True MSE:", np.mean((u - U_reconstructed) ** 2))
+print("SINDy-True MSE:", np.mean((u - U_sindy) ** 2))
+
+L = 1000
+x0 = -50
+nc = 1000
+dx = L / nc
+
+x = np.linspace(x0 - dx/2, x0 + L + dx/2, nc + 2)
+u = np.zeros(nc + 2)
+
+NX = len(x)
+tend = 1500
+CFLcoe = 0.9
+t = 0.0
+
+uL, uR = -2, -1
+
+u[x <= x0 + L/2] = uL
+u[x > x0 + L/2] = uR
+
+u_test_history = [u.copy()]
+t_test_history = [t]
+
+while t < tend:
+
+    u = PeriodicBoundary(u)
+
+    dt = CFLcondition(u, dx, CFLcoe)
+    dt = min(dt, tend - t)
+
+    F = GodunovFlux(u)
+
+    u[1:nc+1] = u[1:nc+1] - dt/dx * (F[1:nc+1] - F[0:nc])
+    t += dt
+
+    u_test_history.append(u.copy())
+    t_test_history.append(t)
+
+u_test_history = np.array(u_test_history)
+t_test_history = np.array(t_test_history)
+
+
+modes_test = np.fft.fft(u_test_history, axis=1)
+
+a_test = modes_test[:, 1:N_MODES+1]
+a0_test = modes_test[:, 0]
+
+a0_const = modes_test[0, 0]
+
+X0_test = a_test[0]
+
+sol_test = solve_ivp(
+    fun=lambda t_val, X: sindy_rhs_ivp(t_val, X, Xi, k_positive, a0_const, NX, dx),
+    t_span=(t_test_history[0], t_test_history[-1]),
+    y0=X0_test,
+    t_eval=t_test_history,
+    method="RK45",
+)
+
+a_sim_test = sol_test.y.T
+
+U_hat_sindy_test = np.zeros((len(t_test_history), NX), dtype=complex)
+U_hat_sindy_test[:, 1:N_MODES+1] = a_sim_test
+U_hat_sindy_test[:, 0] = np.full(modes_test[:, 0].shape, modes_test[0, 0])
+U_hat_sindy_test[:, NX-N_MODES:NX] = np.conj(a_sim_test[:, ::-1])
+
+U_sindy_test = np.fft.ifft(U_hat_sindy_test, axis=1).real
+
+print("\nTEST RESULTS")
+print(f"SINDy vs True MSE: {np.mean((u_test_history - U_sindy_test)**2)}")
+
+if PLOTTING:
+    fig = plt.figure(figsize=(14, 6))
+    Xm, Tm = np.meshgrid(x, t_test_history)
+
+    ax1 = fig.add_subplot(1, 2, 1, projection='3d')
+    ax1.view_init(azim=azim_val)
+    ax1.plot_surface(Xm, Tm, u_test_history, cmap='plasma')
+    ax1.set_title("True Solution")
+    ax1.set_xlabel("x");ax1.set_ylabel("t")
+
+    ax2 = fig.add_subplot(1, 2, 2, projection='3d')
+    ax2.view_init(azim=azim_val)
+    ax2.plot_surface(Xm, Tm, U_sindy_test, cmap='plasma')
+    ax2.set_title("SINDy Prediction")
+    ax2.set_xlabel("x");ax2.set_ylabel("t")
+
+    plt.tight_layout()
+    plt.show()

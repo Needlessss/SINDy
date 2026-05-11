@@ -11,7 +11,7 @@ warnings.filterwarnings("ignore", category=LinAlgWarning)
 PLOTTING = True
 PLOT_MODES = True
 PRINT_XI = True
-n_modes = 10
+n_modes = 15
 TRAIN_FRAC = 0.3
 L = 2
 c = 1
@@ -30,7 +30,7 @@ def compute_time_derivative(a, dt):
 
 
 def solve_wave_equation_2d(
-        c=1.0, L=2.0, Nx=100, Ny=100, n_steps=1500, sigma=0.15,
+        c=1.0, L=2.0, Nx=100, Ny=100, n_steps=1500, sigma=0.15, ic_change=False
 ):
     dx = L / Nx
     dt = 0.4 * dx / c
@@ -42,20 +42,26 @@ def solve_wave_equation_2d(
 
     X, Y = np.meshgrid(x, y, indexing='ij')
 
-    x0_disp, y0_disp = +0.2, +0.2
+
+    if ic_change:
+        x0_vel, y0_vel = 0.1, 0.3
+        x0_disp, y0_disp = -0.2, -0.2
+    else:
+        x0_vel, y0_vel = -0.1, -0.3
+        x0_disp, y0_disp = +0.2, +0.2
+
     u0 = np.exp(-((X - x0_disp) ** 2 + (Y - y0_disp) ** 2) / (2 * sigma ** 2))
 
-    x0_vel, y0_vel = -0.1, -0.3
     v0 = np.exp(-((X - x0_vel) ** 2 + (Y - y0_vel) ** 2) / (2 * sigma ** 2))
 
     u = np.zeros((n_steps + 1, Nx + 1, Ny + 1))
     u[0] = u0
 
     lap_u0 = (
-                     u0[2:, 1:-1] + u0[:-2, 1:-1] +
-                     u0[1:-1, 2:] + u0[1:-1, :-2] -
-                     4.0 * u0[1:-1, 1:-1]
-             ) / dx ** 2
+            u0[2:, 1:-1] + u0[:-2, 1:-1] +
+            u0[1:-1, 2:] + u0[1:-1, :-2] -
+            4.0 * u0[1:-1, 1:-1]
+            ) / dx ** 2
 
     u[1, 1:-1, 1:-1] = (
             u0[1:-1, 1:-1]
@@ -114,13 +120,11 @@ def physical_k_sq(kx, ky, Nx_grid, Ny_grid, L):
 U_hat_filtered = np.zeros_like(modes, dtype=complex)
 for i, j in selected_modes:
     U_hat_filtered[:, i, j] = modes[:, i, j]
+U_hat_filtered[:, 0, 0] = modes[:, 0, 0]
 U_reconstructed = np.fft.irfft2(U_hat_filtered, s=(u.shape[1], u.shape[2]), axes=(1, 2)).real
 
 N_train = int(Nt * TRAIN_FRAC)
 t_train = t[:N_train]
-
-print(f"Building stacked state matrix for {n_sel} modes  "
-      f"→ {2 * n_sel}-dimensional complex joint system")
 
 state_cols = []
 dot_cols = []
@@ -139,9 +143,7 @@ X_dot_full = np.column_stack(dot_cols)
 Theta_train = X_full[:N_train]
 X_dot_train = X_dot_full[:N_train]
 
-print(np.shape(Theta_train))
-
-print(f"Fitting single joint SINDy model  (library shape: {Theta_train.shape})")
+print(f"Fitting single SINDy model (library shape: {Theta_train.shape})")
 
 opt = FROLS(max_iter=FROLS_MAX_ITER, alpha=FROLS_ALPHA, kappa=FROLS_KAPPA)
 opt.fit(Theta_train, X_dot_train)
@@ -159,7 +161,7 @@ if PRINT_XI:
     col_w = max(len(l) for l in labels) + 8
     row_lbl = max(len(l) for l in labels)
 
-    print(f"\nJoint coefficient matrix Xi_full  ({Xi_full.shape[0]}×{Xi_full.shape[1]})")
+    print(f"\nCoefficient matrix ({Xi_full.shape[0]}×{Xi_full.shape[1]})")
 
     header = " " * (row_lbl + 3) + "".join(l.rjust(col_w) for l in labels)
     print(header)
@@ -180,8 +182,6 @@ if PRINT_XI:
             f"  mode ({kx_w:+d},{ky_w:+d})  "
             f"ω²_expected={omega_sq_expected:.4f}"
         )
-
-print("\nSimulating joint stacked system …")
 
 X0_full = X_full[0]
 
@@ -204,7 +204,7 @@ a_sim_complex = np.column_stack([sim_full[:, 2 * i] for i in range(n_sel)])
 U_hat_sindy = np.zeros_like(modes, dtype=complex)
 for idx, (i, j) in enumerate(selected_modes):
     U_hat_sindy[:, i, j] = a_sim_complex[:, idx]
-
+U_hat_sindy[:, 0, 0] = modes[:, 0, 0]
 U_sindy = np.fft.irfft2(U_hat_sindy, s=(u.shape[1], u.shape[2]), axes=(1, 2)).real
 
 if PLOTTING:
@@ -217,7 +217,7 @@ if PLOTTING:
                     [u[i], U_reconstructed[i], U_sindy[i]],
                     [f"True (step {i})",
                      f"Modal reconstruct (step {i})",
-                     f"SINDy joint forecast (step {i})"],
+                     f"SINDy forecast (step {i})"],
             ):
                 im = ax.imshow(
                     field.T, origin="lower",
@@ -251,3 +251,78 @@ if PLOT_MODES:
 print("\nSINDy-Modal MSE :", np.mean((U_reconstructed - U_sindy) ** 2))
 print("Modal-True  MSE :", np.mean((u - U_reconstructed) ** 2))
 print("SINDy-True  MSE :", np.mean((u - U_sindy) ** 2))
+
+#Testing
+
+x, y, t_test, u_test, modes_test, dx, dt = solve_wave_equation_2d(ic_change=True)
+Nt_test = len(t_test)
+
+state_cols_test = []
+
+for kx, ky in selected_modes:
+    a = modes_test[:, kx, ky]
+    v = compute_time_derivative(a, dt)
+    state_cols_test.extend([a, v])
+
+X_full_test = np.column_stack(state_cols_test)
+
+X0_test = X_full_test[0]
+
+def rhs_test(t_val, state, Xi=Xi_full):
+    return (state.reshape(1, -1) @ Xi).flatten()
+
+sol_test = solve_ivp(
+    rhs_test,
+    t_span=(t_test[0], t_test[-1]),
+    y0=X0_test,
+    t_eval=t_test,
+    method='RK45'
+)
+
+sim_test = sol_test.y.T
+
+a_sim_test = np.column_stack(
+    [sim_test[:, 2 * i] for i in range(n_sel)]
+)
+
+U_hat_sindy_test = np.zeros_like(modes_test, dtype=complex)
+
+for idx, (i, j) in enumerate(selected_modes):
+    U_hat_sindy_test[:, i, j] = a_sim_test[:, idx]
+U_hat_sindy_test[:, 0, 0] = modes_test[:, 0, 0]
+
+print(modes_test[:, 0, 0])
+
+U_sindy_test = np.fft.irfft2(
+    U_hat_sindy_test,
+    s=(u_test.shape[1], u_test.shape[2]),
+    axes=(1, 2)
+).real
+
+
+print(f"New IC SINDy-True MSE: {np.mean((u_test - U_sindy_test) ** 2)}")
+
+
+if PLOTTING:
+    Xg, Yg = np.meshgrid(x, y, indexing='ij')
+
+    for i in range(0, Nt_test, 200):
+        fig, axes = plt.subplots(2, 1, figsize=(8, 10))
+
+        for ax, field, title in zip(
+                axes,
+                [u_test[i], U_sindy_test[i]],
+                [f"True (new IC, step {i})",
+                 f"SINDy forecast (new IC, step {i})"],
+        ):
+            im = ax.imshow(
+                field.T,
+                origin="lower",
+                extent=[x[0], x[-1], y[0], y[-1]],
+                cmap="Blues_r",
+            )
+            ax.set(xlabel="x", ylabel="y", title=title)
+            fig.colorbar(im, ax=ax, label="Amplitude")
+
+        plt.tight_layout()
+        plt.show()
