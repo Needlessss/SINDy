@@ -10,13 +10,14 @@ from scipy.linalg import LinAlgWarning
 warnings.filterwarnings("ignore", category=LinAlgWarning)
 ################################################################################
 
-N_MODES = 15
+N_MODES = 20
 TRAIN_FRAC = 0.5
 
 PLOT_SLICES = True
 PLOT_MODES = False
 PLOTTING = True
 PLOT_AMPLITUDES = True
+PRINT_XI = True
 
 METHOD = "FROLS"
 
@@ -28,10 +29,12 @@ def CFLcondition(u, dx, CFLcoe):
     return dt
 
 
-def PeriodicBoundary(u):
+def PeriodicBoundary(u, uL, uR):
     nc = len(u) - 2
     u[0] = u[nc]
     u[nc + 1] = u[1]
+    #u[0] = uL
+    #u[nc+1] = uR
     return u
 
 
@@ -66,14 +69,14 @@ nc = 1000
 dx = L / nc
 
 x = np.linspace(x0 - dx/2, x0 + L + dx/2, nc + 2)
-u = np.zeros(nc + 2)
+u = np.ones(nc + 2)
 
 NX = len(x)
-tend = 1500
+tend = 1000
 CFLcoe = 0.9
 t = 0.0
 
-itest = 4
+itest = 8
 
 if itest == 1:
     testname = "Right Rarefaction"
@@ -89,24 +92,35 @@ elif itest == 4:
     uL, uR = -1, -2
 elif itest == 5:
     testname = "Right Travelling Shock"
-    uL, uR = 3, 1
+    uL, uR = 1, 0
 elif itest == 6:
     testname = "Steady Shock"
     uL, uR = 1, -1
+elif itest == 7 or itest == 8:
+    testname = "bump"
+    uL, uR = 0, 0
 else:
     raise ValueError("Invalid test case")
 
 print(testname)
 
-u[x <= x0 + L/2] = uL
-u[x > x0 + L/2] = uR
+if itest <= 6:
+    u[x <= x0 + L/2] = uL
+    u[x > x0 + L/2] = uR
+
+if itest == 7:
+    u[x <= x0 + L/3] = uL
+    u[x > x0 + 2*L/3] = uR
+
+if itest == 8:
+    u = np.e**-(((x-(x0+L/2))**2)/(2*((L/6)**2)))
 
 u_history = [u.copy()]
 t_history = [t]
 
 while t < tend:
 
-    u = PeriodicBoundary(u)
+    u = PeriodicBoundary(u, uL, uR)
 
     dt = CFLcondition(u, dx, CFLcoe)
     dt = min(dt, tend - t)
@@ -162,6 +176,8 @@ if PLOT_AMPLITUDES:
     plt.tight_layout()
     plt.show()
 
+
+
 a = modes[:, 1:N_MODES+1]
 
 k_full = 2 * np.pi * np.fft.fftfreq(NX, d=dx)
@@ -192,11 +208,11 @@ def compute_fourier_nonlinearity(a_complex_slice, a0_slice, k_positive, NX, dx):
             for m in range(-K, K + 1):
                 km = k_idx - m
                 if m in modes_dict and km in modes_dict:
-                    s += modes_dict[m] * modes_dict[km]
-                    #k_m = 2.0 * np.pi * m / L
-                    #s += k_m * modes_dict[m] * modes_dict[km]
-            #nonlinear[t_idx, j] = -1j * s / NX
-            nonlinear[t_idx, j] = s
+                    #s += modes_dict[m] * modes_dict[km]
+                    k_m = 2.0 * np.pi * m / L
+                    s += k_m * modes_dict[m] * modes_dict[km]
+            nonlinear[t_idx, j] = -1j * s / NX
+            #nonlinear[t_idx, j] = s
 
     return nonlinear
 
@@ -235,6 +251,15 @@ if METHOD == "FROLS":
 
     Xi = opt.coef_.T
 
+new_Xi = np.zeros_like(Xi)
+
+for i in range(new_Xi.shape[0]):
+    for j in range(new_Xi.shape[1]):
+        if i == j:
+            new_Xi[i][j] = 1
+
+#Xi = new_Xi
+
 print(f"Xi shape: {Xi.shape}")
 print(f"\n{'Output':<22} {'Selected library terms'}")
 print("-" * 70)
@@ -250,6 +275,10 @@ for col_idx, out_label in enumerate(output_labels):
 
     print(f"  {out_label:<20}  {', '.join(selected) if selected else '(none)'}")
 
+if PRINT_XI:
+    for i in range(N_MODES):
+        formatted = [f"{num:.6f}" for num in Xi[:, i]]
+        print(f"Equation {i}: {formatted}")
 
 def sindy_rhs_ivp(t_val, X, Xi, k_positive, a0_const, NX, dx):
     a_complex = X.reshape(1, -1)
@@ -282,6 +311,26 @@ U_hat_filtered[:, 1:N_MODES+1] = a
 U_hat_filtered[:, 0]  = modes[:, 0]
 U_hat_filtered[:, NX-N_MODES:NX] = np.conj(a[:, ::-1])
 U_reconstructed = np.fft.ifft(U_hat_filtered, axis=1).real
+
+if PLOT_SLICES:
+    N_SLICES = 5
+    slice_ids = np.linspace(0, len(t_history) - 1, N_SLICES, dtype=int)
+
+    fig, ax = plt.subplots(figsize=(11, 6))
+    colors = plt.cm.viridis(np.linspace(0, 1, N_SLICES))
+
+    for colour, idx in zip(colors, slice_ids):
+        ax.plot(x, U_sindy[idx], color=colour,
+                label=f't = {t_history[idx]:.2f}')
+
+    ax.set_xlabel('x')
+    ax.set_ylabel('u(x, t)')
+    ax.set_title('1D Burgers Equation — Time Slices (Periodic BC)')
+    ax.legend(loc='upper right', title='Time')
+    ax.set_xlim(x[0], x[-1])
+    ax.grid(True)
+    plt.tight_layout()
+    plt.show()
 
 if PLOT_MODES:
     for k in range(N_MODES):
@@ -339,6 +388,7 @@ print("\nSINDy-Modal MSE:", np.mean((U_reconstructed - U_sindy) ** 2))
 print("Modal-True MSE:", np.mean((u - U_reconstructed) ** 2))
 print("SINDy-True MSE:", np.mean((u - U_sindy) ** 2))
 
+"""
 L = 1000
 x0 = -50
 nc = 1000
@@ -362,7 +412,7 @@ t_test_history = [t]
 
 while t < tend:
 
-    u = PeriodicBoundary(u)
+    u = PeriodicBoundary(u, uL, uR)
 
     dt = CFLcondition(u, dx, CFLcoe)
     dt = min(dt, tend - t)
@@ -426,3 +476,4 @@ if PLOTTING:
 
     plt.tight_layout()
     plt.show()
+"""

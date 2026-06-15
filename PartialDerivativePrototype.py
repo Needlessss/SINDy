@@ -72,14 +72,15 @@ def STRidge(X0, y, lam, maxit, tol, normalize=0, print_results=False):
         return w
 
 time_scales = [0.01, 0.05, 0.1, 0.5, 1, 2]
+ranges = [0.1, 0.3, 0.5, 0.7, 1, 3, 5, 7, 10]
 errs = []
-for greg in time_scales:
-    LAM = 1
-    TOL = 0.01
+for greg in ranges:
+    LAM = 0
+    TOL = 0.05
     TRAIN_FRAC = 0.8
     GREG = 1000
 
-    h = greg
+    h = 0.01
     x = np.arange(-10, 10 + h, h)
     N = len(x)
 
@@ -98,6 +99,7 @@ for greg in time_scales:
     A = A.tocsr()
 
     k = 0.001
+    iters = int(greg/k)
 
     I = sp.sparse.identity(N)
     M_left = I - (k / (h ** 2)) * A
@@ -112,7 +114,7 @@ for greg in time_scales:
     U_list = [U.copy()]
     t_list = [t]
 
-    for n in range(GREG):
+    for n in range(iters):
         rhs = U + k * f(U)
         U_new = solver(rhs)
         t += k
@@ -235,13 +237,13 @@ for greg in time_scales:
     print(f"\nTest MSE: {test_mse:.6e}")
     print("─" * 70)
 
-plt.plot(time_scales, errs, marker='o')
+plt.plot(ranges, errs, marker='o')
 
 plt.xscale("log")
 
-plt.xlabel("Spatial Resolution (dx)")
-plt.ylabel("Error Value")
-plt.title("Data Space Resolution vs Model Error")
+plt.xlabel("Time Range (T)")
+plt.ylabel("SINDy Reconstruction vs True Data MSE")
+plt.title("Data Time Range vs SINDy Model Error")
 
 plt.grid(True, which="both")
 

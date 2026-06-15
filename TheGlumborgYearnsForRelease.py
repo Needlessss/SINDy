@@ -4,11 +4,12 @@ import PDE_FIND
 from scipy.integrate import solve_ivp
 
 space_res = [64, 128, 256, 512]
+Ts = [0.1,0.5,1,5,10,15,20]
 time_err_list = []
 res_vals = np.zeros(np.shape(space_res))
 for i in range(len(res_vals)):
     res_vals[i] = 60/space_res[i]
-for scale_val in space_res:
+for T_val in Ts:
     class KdVSolver:
         def __init__(self, L=60, N=256):
             self.L = L
@@ -65,10 +66,10 @@ for scale_val in space_res:
     TOL = 1e-4
     TRAIN_FRAC = 0.8
 
-    solver = KdVSolver(L=60, N=scale_val)
+    solver = KdVSolver(L=60, N=512)
     u0 = solver.two_solitons(c1=0.5, c2=0.2, sep=18)
 
-    times, sols = solver.solve(u0, dt=0.001, T=2)
+    times, sols = solver.solve(u0, dt=0.001, T=T_val)
     x = solver.x
     dt = times[1] - times[0]
     k = solver.k
@@ -159,14 +160,14 @@ for scale_val in space_res:
             terms.append(f"{sign}{c:.4f}*{label}")
 
     time_err_list.append(test_mse)
-    print(f"time val {scale_val} done")
-plt.plot(res_vals, time_err_list, marker='o')
+    print(f"time val {T_val} done")
+plt.plot(Ts, time_err_list, marker='o')
 
-plt.yscale("log")
+#plt.yscale("log")
 
-plt.xlabel("Spatial Resolution (dx)")
-plt.ylabel("Error Value")
-plt.title("Data Spatial Resolution vs Model Error")
+plt.xlabel("Time Range (T)")
+plt.ylabel("SINDy Reconstruction vs True Data MSE")
+plt.title("Data Time Range vs SINDy Model Error")
 
 plt.grid(True, which="both")
 

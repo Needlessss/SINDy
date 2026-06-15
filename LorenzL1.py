@@ -6,16 +6,19 @@ from sklearn.linear_model import Lasso
 
 time_steps = [100000, 20000, 10000, 2000, 1000]
 time_res = [0.001, 0.005, 0.01, 0.05, 0.1]
+ranges = [5,10,50,100,500,1000, 5000,10000]
 errs = []
 stride = 20
 max_rollouts_per_fold = 50000
 
 
 
-for steps in time_steps:
-    dt = 100 / steps
+for range_val in ranges:
+
+    dt = 100 / 10000
+    steps = int(range_val/dt)
     tau = 2.0
-    horizon_steps = int(tau / dt)
+    horizon_steps = int(20)
     def lorenz(t, xyz):
         sigma = 10.0
         rho = 28.0
@@ -28,8 +31,8 @@ for steps in time_steps:
 
     #Numerically integrate true solution to obtain "sample" data
     x0y0z0 = (-8, 7, 27)
-    t_eval = np.linspace(0, 100, steps)
-    result = sp.integrate.solve_ivp(lorenz, (0,100), x0y0z0, method='RK45', t_eval=t_eval)
+    t_eval = np.linspace(0, range_val, steps)
+    result = sp.integrate.solve_ivp(lorenz, (0,range_val), x0y0z0, method='RK45', t_eval=t_eval)
     t = result.t
     x, y, z = result.y
     X = np.stack([x, y, z], axis=-1)
@@ -118,7 +121,7 @@ for steps in time_steps:
             rollout_errors.append(0)
             continue
 
-        X_pred = sol.y.T  # (K, 3)
+        X_pred = sol.y.T
         X_true = X[start_idx:start_idx + horizon_steps + 1]
 
         err = np.mean((X_true - X_pred) ** 2)
@@ -126,13 +129,13 @@ for steps in time_steps:
 
     mse = np.mean(rollout_errors)
     errs.append(mse)
-plt.plot(time_res, errs, marker='o')
+plt.plot(ranges, errs, marker='o')
 
 plt.xscale("log")
 
-plt.xlabel("Time Resolution (dt)")
-plt.ylabel("Error Value")
-plt.title("Data Time Resolution vs Model Error")
+plt.xlabel("Time Range (T)")
+plt.ylabel("SINDy Reconstruction vs True Data Short-Term MSE")
+plt.title("Data Time Range vs SINDy Model Error")
 
 plt.grid(True, which="both")
 

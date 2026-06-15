@@ -174,16 +174,13 @@ U_dot_flat = U_dot.flatten()
 print(f"Library shape: {candidate_library.shape}")
 print(f"U_dot shape: {U_dot_flat.shape}")
 
-lam = 30
+#lam = 30
 maxit = 10000
-tol = 0.01
+#tol = 0.01
 normalize = 0
 
-#lambdas = [0, 1e-3, 1e-2, 0.1, 1, 10, 100, 1000]  # Ridge penalties
-#tolerances = [1e-4, 1e-3, 5e-3, 1e-2, 5e-2, 0.1, 0.5]  # Sparsity thresholds
-
-lambdas=[1]
-tolerances=[0.1]
+lambdas = [0, 1e-3, 1e-2, 0.1, 1, 10, 100, 1000]  # Ridge penalties
+tolerances = [1e-4, 1e-3, 5e-3, 1e-2, 5e-2, 0.1, 0.5]  # Sparsity thresholds
 
 k_folds = 5
 
@@ -195,11 +192,49 @@ best_params = {'lam': None, 'tol': None}
 
 print(f"Starting {k_folds}-fold Cross-Validation...")
 
+def simulate_discovered_pde(w, U0, n_steps, k, h, A, N):
+    """
+    Simulate the discovered PDE forward in time using the same
+    IMEX Euler scheme as the original solver.
+    Library order: [1, u, u², u³, u_x, u_xx]
+    """
+    c = w.flatten().real
+    c0, c1, c2, c3, c4, c5 = c
+
+    # Implicit left-hand side for the u_xx term
+    I_sp = sp.sparse.identity(N)
+    M_disc = I_sp - (k * c5 / h**2) * A
+    try:
+        disc_solver = spla.factorized(M_disc.tocsc())
+    except RuntimeError:
+        return None  # Singular system
+
+    U = U0.astype(float).copy()
+    traj = np.empty((n_steps, N))
+    traj[0] = U
+
+    for step in range(1, n_steps):
+        # u_x by central differences, one-sided at boundaries
+        Ux = np.empty_like(U)
+        Ux[1:-1] = (U[2:] - U[:-2]) / (2 * h)
+        Ux[0]    = (U[1]  - U[0])  / h
+        Ux[-1]   = (U[-1] - U[-2]) / h
+
+        rhs = U + k * (c0 + c1*U + c2*U**2 + c3*U**3 + c4*Ux)
+        U = disc_solver(rhs)
+
+        # Catch blow-up early
+        if not np.isfinite(U).all() or np.max(np.abs(U)) > 1e10:
+            return None
+
+        traj[step] = U
+
+    return traj
+
 for lam, tol in itertools.product(lambdas, tolerances):
     fold_mses = []
-    l = 0
+
     for train_times, val_times in kf.split(time_indices):
-        # Split data
         n_t, n_x = U_list.shape
         n_features = candidate_library.shape[1]
 
@@ -211,46 +246,18 @@ for lam, tol in itertools.product(lambdas, tolerances):
         # Train model
         w = STRidge(X_train, y_train, lam, maxit=1000, tol=tol)
 
-        # Validation design matrix and targets
-        X_val = Theta[val_times].reshape(-1, n_features)
-        y_val = U_dot[val_times].reshape(-1, 1)
+        # Simulate the discovered PDE forward over the validation window
+        U0_val     = U_list[val_times[0]]
+        n_val_steps = len(val_times)
 
-        # Predicted time derivatives
-        y_pred = X_val @ w
+        U_sim = simulate_discovered_pde(w, U0_val, n_val_steps, k, h, A, N)
 
-        # Mean-squared error on u_t
-        mse = np.mean((y_val - y_pred) ** 2)
+        if U_sim is None:
+            mse = 1e20  # Penalise unstable / diverged simulations
+        else:
+            mse = np.mean((U_sim - U_list[val_times]) ** 2)
 
         fold_mses.append(mse)
-
-        #print(w)
-
-        """
-        if l == 0:
-            X, T = np.meshgrid(x, t_list[val_times])
-            fig = plt.figure(figsize=(12, 8))
-            ax = fig.add_subplot(111, projection="3d")
-            surf = ax.plot_surface(X, T, traj_arr, cmap="viridis")
-            ax.set_xlabel("x")
-            ax.set_ylabel("t")
-            ax.set_zlabel("u(x,t)")
-            ax.set_title(f"est lam {lam}, tol {tol}")
-            plt.tight_layout()
-            plt.show()
-
-            X, T = np.meshgrid(x, t_list[val_times])
-            fig = plt.figure(figsize=(12, 8))
-            ax = fig.add_subplot(111, projection="3d")
-            surf = ax.plot_surface(X, T, U_list[val_times], cmap="viridis")
-            ax.set_xlabel("x")
-            ax.set_ylabel("t")
-            ax.set_zlabel("u(x,t)")
-            ax.set_title(f"true lam {lam}, tol {tol}")
-            plt.tight_layout()
-            plt.show()
-
-        l += 1
-        """
 
     avg_mse = np.mean(fold_mses)
     print(f"Lambda: {lam} | Tol: {tol} | Avg MSE: {avg_mse:.6e}")

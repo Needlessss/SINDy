@@ -249,8 +249,8 @@ a_sim_test = X_sim_test[:, :N_MODES]
 
 U_hat_sindy_test = np.zeros_like(modes_test, dtype=complex)
 U_hat_sindy_test[:, 1:N_MODES+1] = a_sim_test
-U_hat_sindy[:, 0] = modes_test[:, 0]
-U_hat_sindy[:, n_test-N_MODES:n_test] = np.conj(a_sim_test[:, ::-1])
+U_hat_sindy_test[:, 0] = modes_test[:, 0]
+U_hat_sindy_test[:, n_test-N_MODES:n_test] = np.conj(a_sim_test[:, ::-1])
 U_sindy_test = np.fft.ifft(U_hat_sindy_test, n=n_test, axis=1).real
 
 print("\nSINDy-True MSE (test IC):", np.mean((u_test - U_sindy_test)**2))
@@ -267,7 +267,7 @@ if PLOTTING:
     ax2 = fig1.add_subplot(1, 2, 2, projection='3d')
     ax2.plot_surface(Xm_test, Tm_test, U_sindy_test, cmap='viridis')
     ax2.set_xlabel('x'); ax2.set_ylabel('t'); ax2.set_zlabel('u')
-    ax2.set_title(f'Reconstruction')
+    ax2.set_title(f'SINDy Reconstruction')
 
     plt.tight_layout()
     plt.show()

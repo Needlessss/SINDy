@@ -68,7 +68,7 @@ c1, c2 = 0.5, 0.2
 u0 = solver.two_solitons(c1=c1, c2=c2, sep=18)
 
 dt = 0.001
-T = 2
+T = 10
 
 times, sols = solver.solve(u0, dt, T)
 x = solver.x
@@ -76,7 +76,7 @@ dt = times[1]-times[0]
 N = len(x)
 
 
-##fig = plt.figure(figsize=(16, 10))
+fig = plt.figure(figsize=(6, 5))
 ax3 = plt.subplot(1, 1, 1, projection='3d')
 X_sub = x
 T_sub = times
@@ -131,11 +131,12 @@ U_dot_flat = U_dot.flatten()
 maxit = 10000
 normalize = 2
 
-#lambdas = [0, 1e-3, 1e-2, 0.1, 1, 10, 100, 1000]
-#tolerances = [1e-4, 1e-3, 1e-2, 0.1, 0.5]
 
-lambdas = [0]
-tolerances = [1e-4]
+lambdas = [0, 1e-3, 1e-2, 0.1, 1, 10, 100, 1000]
+tolerances = [1e-4, 1e-3, 5e-3, 1e-2, 5e-2, 0.1, 0.5]
+
+#lambdas = [0]
+#tolerances = [1e-4]
 
 k_folds = 5
 

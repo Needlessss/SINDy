@@ -32,8 +32,6 @@ time_indices = np.arange(len(t_eval))
 best_mse = float('inf')
 best_params = {'lam': None, 'tol': None}
 
-print(f"Starting {k_folds}-fold Cross-Validation...")
-
 lib_creator = PolynomialLibrary(poly_order=2, include_bias=False)
 feature_lib, feature_names = lib_creator.fit([X[:, i] for i in range(X.shape[1])])
 
@@ -46,11 +44,10 @@ lambda_mse = {}
 
 dt = t[1] - t[0]
 
-tau = 2.0                     # short horizon in time units
-horizon_steps = int(tau / dt)
+horizon_steps = 200
 
-stride = 20                   # spacing between rollout start points
-max_rollouts_per_fold = 50000    # cap for speed (optional)
+stride = 5
+max_rollouts_per_fold = 50000
 
 print(f"Starting {k_folds}-fold Cross-Validation (trajectory-based)...")
 
@@ -68,10 +65,10 @@ for lam in lambdas:
 
         # ---- Fit LASSO on each state dimension ----
         coeffs = []
-        threshold = 0.02
+        threshold = 0.1
 
         for dim in range(dX.shape[1]):
-            lasso = Lasso(alpha=0.001, fit_intercept=False, max_iter=1_000_000)
+            lasso = Lasso(alpha=lam, fit_intercept=False, max_iter=1_000_000)
             lasso.fit(Phi_train, dX_train[:, dim])
 
             coef = lasso.coef_
@@ -86,8 +83,6 @@ for lam in lambdas:
             x, y, z = xyz
             features = [z, z * z, y, y * z, y * y, x, x * z, x * y, x * x]
             features = np.array(features)
-            # features, _ = lib_creator.fit(xyz)
-            # features = features[0]
             dxdt = np.dot(features, coeffs[0])
             dydt = np.dot(features, coeffs[1])
             dzdt = np.dot(features, coeffs[2])
@@ -102,6 +97,7 @@ for lam in lambdas:
         start_indices = val_times_sorted[
                         :-horizon_steps:stride
                         ]
+
 
         if len(start_indices) == 0:
             fold_mses.append(1e6)
@@ -155,10 +151,10 @@ for lam in lambdas:
 
         # ---- Compute MSE for this fold ----
         mse = np.mean((dX_val - dX_val_pred) ** 2)
-        """
+        
 
 
-        """
+
         t0 = t[val_times_sorted[0]]
         t1 = t[val_times_sorted[-1]]
         t_window = t[val_times_sorted]
@@ -187,13 +183,11 @@ for lam in lambdas:
 
 
         fold_mses.append(mse)
-
     mean_mse = np.mean(fold_mses)
     lambda_mse[lam] = mean_mse
 
     print(f"λ = {lam:8g} | mean trajectory CV-MSE = {mean_mse:.6e}")
 
-print("\nRefit on Full Dataset for Each λ")
 
 full_models = {}
 
@@ -209,7 +203,7 @@ for lam in lambdas:
     dX_full  = dX
 
     coeffs = []
-    threshold = 0.02
+    threshold = 0.1
 
     for dim in range(dX_full.shape[1]):
         lasso = Lasso(alpha=lam, fit_intercept=False, max_iter=1000000)

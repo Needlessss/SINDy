@@ -1,8 +1,8 @@
 from ngclearn.utils.feature_dictionaries.polynomialLibrary import PolynomialLibrary
 import numpy as np
 import scipy as sp
-import jax.numpy as jnp
 import matplotlib.pyplot as plt
+from sklearn.linear_model import Lasso
 
 def lorenz(t, xyz):
     sigma = 10.0
@@ -30,42 +30,16 @@ feature_lib, feature_names = lib_creator.fit([X[:, i] for i in range(X.shape[1])
 dX = np.array(np.gradient(X, t.ravel(), axis=0))
 
 #Perform least-squares linear regression with thresholding
-threshold = 0.05
+threshold = 0.1
+alpha = 0.1
 coeffs = []
 
 for dim in range(dX.shape[1]):
-    #Compute the first least squares solution to Θ @ ξ = dX[i] for current i dimension, setting coef = ξ
-    coef = np.linalg.lstsq(feature_lib, dX[:, dim][:, None], rcond=None)[0]
-
-    #Regression loop
-    for i in range(1000000):
-        print(i)
-        coef_pre = jnp.array(coef)
-        coef_zero = jnp.zeros_like(coef)
-
-        #Create a mask over all values in ξ where values above the threshold are True, and below are False
-        res_idx = jnp.where(jnp.abs(coef) >= threshold,
-                            True,
-                            False)
-        res_mask = res_idx.T[0]
-
-        #Remove the features in the library of candidate functions covered by the mask
-        res_lib = feature_lib[:, res_mask]
-
-        #Compute a new ξ using the new candidate library with the mask applied
-        coef_new = np.linalg.lstsq(res_lib, dX[:, dim][:, None], rcond=None)[0]
-
-        #Update all the coef values with the new ξ values where the mask is True
-        coef = coef_zero.at[res_mask].set(coef_new)
-
-        #Break if convergence is achieved
-        if all(coef_pre == coef):
-           break
-
-    #Set all values in ξ below the threshold to 0
-    coeff = jnp.where(jnp.abs(coef) >= threshold, coef, 0.)
-    #Append ξ to the matrix Ξ
-    coeffs.append(coeff.T[0])
+    lasso = Lasso(alpha=alpha, fit_intercept=False, max_iter=1000000)
+    lasso.fit(feature_lib, dX[:, dim])
+    coef = lasso.coef_
+    coef = np.where(np.abs(coef) >= threshold, coef, 0.0)
+    coeffs.append(coef)
 coeffs = np.array(coeffs)
 
 #Print the new system of equations
