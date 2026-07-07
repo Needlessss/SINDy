@@ -5,6 +5,15 @@ from pysindy.optimizers import FROLS
 from itertools import product
 import numpy as np
 
+
+"""
+This file is an example of how you might find
+a good kappa value if you're using FROLS but I
+didn't need it, nor do I know if it's actually
+useful.
+"""
+
+
 #Disable this if you aren't certain ill conditioned matrices won't cause you issues
 ################################################################################
 import warnings
