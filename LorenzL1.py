@@ -4,19 +4,21 @@ import scipy as sp
 import matplotlib.pyplot as plt
 from sklearn.linear_model import Lasso
 
-time_steps = [100000, 20000, 10000, 2000, 1000]
+time_steps = [100000, 50000, 10000, 5000, 1000]
 time_res = [0.001, 0.005, 0.01, 0.05, 0.1]
 ranges = [5,10,50,100,500,1000, 5000,10000]
 errs = []
+dts = []
 stride = 20
 max_rollouts_per_fold = 50000
 
 
 
-for range_val in ranges:
+for range_val in time_steps:
 
-    dt = 100 / 10000
-    steps = int(range_val/dt)
+    dt = 100 / range_val
+    dts.append(dt)
+    steps = int(100/dt)
     tau = 2.0
     horizon_steps = int(20)
     def lorenz(t, xyz):
@@ -31,8 +33,8 @@ for range_val in ranges:
 
     #Numerically integrate true solution to obtain "sample" data
     x0y0z0 = (-8, 7, 27)
-    t_eval = np.linspace(0, range_val, steps)
-    result = sp.integrate.solve_ivp(lorenz, (0,range_val), x0y0z0, method='RK45', t_eval=t_eval)
+    t_eval = np.linspace(0, 100, steps)
+    result = sp.integrate.solve_ivp(lorenz, (0,100), x0y0z0, method='RK45', t_eval=t_eval)
     t = result.t
     x, y, z = result.y
     X = np.stack([x, y, z], axis=-1)
@@ -129,15 +131,18 @@ for range_val in ranges:
 
     mse = np.mean(rollout_errors)
     errs.append(mse)
-plt.plot(ranges, errs, marker='o')
+plt.plot(dts, errs, marker='o')
 
 plt.xscale("log")
+plt.yscale("log")
 
-plt.xlabel("Time Range (T)")
+plt.xlabel("Time Step Size (dt)")
 plt.ylabel("SINDy Reconstruction vs True Data Short-Term MSE")
-plt.title("Data Time Range vs SINDy Model Error")
+plt.title("Data Time Step Size vs SINDy Model Error")
 
 plt.grid(True, which="both")
 
 plt.show()
 
+print(dts)
+print(errs)

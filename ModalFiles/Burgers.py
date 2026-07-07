@@ -10,7 +10,7 @@ from scipy.linalg import LinAlgWarning
 warnings.filterwarnings("ignore", category=LinAlgWarning)
 ################################################################################
 
-N_MODES = 20
+N_MODES = 100
 TRAIN_FRAC = 0.5
 
 PLOT_SLICES = True
@@ -149,7 +149,7 @@ if PLOT_SLICES:
 
     ax.set_xlabel('x')
     ax.set_ylabel('u(x, t)')
-    ax.set_title('1D Burgers Equation — Time Slices (Periodic BC)')
+    ax.set_title('Inviscid Burgers Equation Time Slices')
     ax.legend(loc='upper right', title='Time')
     ax.set_xlim(x[0], x[-1])
     ax.grid(True)
@@ -268,7 +268,7 @@ output_labels = [f"dâ_k{k+1}/dt" for k in range(N_MODES)]
 
 for col_idx, out_label in enumerate(output_labels):
     selected = [
-        f"{lib_labels[i]} ({Xi[i, col_idx]:.6g})"
+        f"{lib_labels[i]} ({Xi[i, col_idx]:.2f})"
         for i in range(len(lib_labels))
         if Xi[i, col_idx] != 0
     ]
@@ -325,7 +325,7 @@ if PLOT_SLICES:
 
     ax.set_xlabel('x')
     ax.set_ylabel('u(x, t)')
-    ax.set_title('1D Burgers Equation — Time Slices (Periodic BC)')
+    ax.set_title('Inviscid Burgers Equation SINDy Reconstruction Time Slices')
     ax.legend(loc='upper right', title='Time')
     ax.set_xlim(x[0], x[-1])
     ax.grid(True)

@@ -115,7 +115,7 @@ def build_library(X):
 Theta_train = build_library(X_train)
 
 if METHOD == "FROLS":
-    opt = FROLS(max_iter=1, alpha=0, kappa=3e-13)
+    opt = FROLS(max_iter=1, alpha=0, kappa=0)
     opt.fit(Theta_train, X_dot_train)
     Xi = opt.coef_.T.astype(complex)
 
@@ -261,12 +261,16 @@ if PLOTTING:
 
     ax1 = fig1.add_subplot(1, 2, 1, projection='3d')
     ax1.plot_surface(Xm_test, Tm_test, u_test, cmap='viridis')
-    ax1.set_xlabel('x'); ax1.set_ylabel('t'); ax1.set_zlabel('u')
+    ax1.set_xlabel('x')
+    ax1.set_ylabel('t')
+    ax1.set_zlabel('u')
     ax1.set_title('Travelling Wave Solution')
 
     ax2 = fig1.add_subplot(1, 2, 2, projection='3d')
     ax2.plot_surface(Xm_test, Tm_test, U_sindy_test, cmap='viridis')
-    ax2.set_xlabel('x'); ax2.set_ylabel('t'); ax2.set_zlabel('u')
+    ax2.set_xlabel('x')
+    ax2.set_ylabel('t')
+    ax2.set_zlabel('u')
     ax2.set_title(f'SINDy Reconstruction')
 
     plt.tight_layout()

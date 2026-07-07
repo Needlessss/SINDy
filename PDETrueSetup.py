@@ -210,10 +210,25 @@ def rhs_pde(t, U_vec):
 
 t_eval = t_list
 
+#IC = U_list[0]
+IC = np.sin((np.pi/20)*x)
+U_IC = np.sin((np.pi/20)*x)
+t = 0.0
+New_list = [U_IC.copy()]
+
+for n in range(GREG):
+    rhs = U_IC + k * f(U_IC)
+    IC_new = solver(rhs)
+    t += k
+    U_IC = IC_new
+    New_list.append(U_IC.copy())
+
+New_list = np.array(New_list)
+
 sol = solve_ivp(
     rhs_pde,
     (t_list[0], t_list[-1]),
-    U_list[0],
+    IC,
     t_eval=t_eval,
     method="RK45",
 )
@@ -246,4 +261,24 @@ plt.colorbar(label="error")
 plt.xlabel("x")
 plt.ylabel("t")
 plt.title("Absolute error between true and SINDy solutions")
+plt.show()
+
+fig1 = plt.figure(figsize=(14, 6))
+X, T = np.meshgrid(x, t_list)
+
+ax1 = fig1.add_subplot(1, 2, 1, projection='3d')
+ax1.plot_surface(X, T, New_list, cmap='viridis')
+ax1.set_xlabel('x')
+ax1.set_ylabel('t')
+ax1.set_zlabel('u')
+ax1.set_title('Reaction-Diffusion PDE Solution')
+
+ax2 = fig1.add_subplot(1, 2, 2, projection='3d')
+ax2.plot_surface(X, T, U_sindy, cmap='viridis')
+ax2.set_xlabel('x')
+ax2.set_ylabel('t')
+ax2.set_zlabel('u')
+ax2.set_title(f'SINDy Reaction-Diffusion PDE Reconstruction')
+
+plt.tight_layout()
 plt.show()

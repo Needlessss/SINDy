@@ -3,73 +3,77 @@ import matplotlib.pyplot as plt
 import PDE_FIND
 from scipy.integrate import solve_ivp
 
-space_res = [64, 128, 256, 512]
+
+class KdVSolver:
+    def __init__(self, L=60, N=256):
+        self.L = L
+        self.N = N
+        self.x = np.linspace(0, L, N, endpoint=False)
+        self.dx = L / N
+        self.k = 2 * np.pi * np.fft.fftfreq(N, d=self.dx)
+
+    def soliton(self, x, c, x0):
+        return 2 * c / np.cosh(np.sqrt(c) * (x - x0)) ** 2
+
+    def two_solitons(self, c1=0.5, c2=0.2, sep=20):
+        x1 = self.L / 3
+        x2 = x1 + sep
+        return self.soliton(self.x, c1, x1) + self.soliton(self.x, c2, x2)
+
+    def solve(self, u0, dt, T, save_every=1):
+        nt = int(T / dt)
+        u = u0.copy()
+        times = [0]
+        solutions = [u.copy()]
+
+        L_op_half = np.exp(-1j * self.k ** 3 * dt / 2)
+
+        def nonlinear(u_):
+            u_hat_ = np.fft.fft(u_)
+            ux_hat = 1j * self.k * u_hat_
+            ux = np.real(np.fft.ifft(ux_hat))
+            return 6 * u_ * ux
+
+        for n in range(nt):
+            u_hat = np.fft.fft(u)
+            u_hat = L_op_half * u_hat
+            u = np.real(np.fft.ifft(u_hat))
+
+            k1 = nonlinear(u)
+            k2 = nonlinear(u + 0.5 * dt * k1)
+            k3 = nonlinear(u + 0.5 * dt * k2)
+            k4 = nonlinear(u + dt * k3)
+            u = u + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
+
+            u_hat = np.fft.fft(u)
+            u_hat = L_op_half * u_hat
+            u = np.real(np.fft.ifft(u_hat))
+
+            if (n + 1) % save_every == 0:
+                times.append((n + 1) * dt)
+                solutions.append(u.copy())
+
+        return np.array(times), np.array(solutions)
+
+space_res = [1024, 768, 512, 384, 256]
 Ts = [0.1,0.5,1,5,10,15,20]
 time_err_list = []
+dxs = []
 res_vals = np.zeros(np.shape(space_res))
-for i in range(len(res_vals)):
-    res_vals[i] = 60/space_res[i]
-for T_val in Ts:
-    class KdVSolver:
-        def __init__(self, L=60, N=256):
-            self.L = L
-            self.N = N
-            self.x = np.linspace(0, L, N, endpoint=False)
-            self.dx = L / N
-            self.k = 2 * np.pi * np.fft.fftfreq(N, d=self.dx)
 
-        def soliton(self, x, c, x0):
-            return 2 * c / np.cosh(np.sqrt(c) * (x - x0)) ** 2
-
-        def two_solitons(self, c1=0.5, c2=0.2, sep=20):
-            x1 = self.L / 3
-            x2 = x1 + sep
-            return self.soliton(self.x, c1, x1) + self.soliton(self.x, c2, x2)
-
-        def solve(self, u0, dt, T, save_every=1):
-            nt = int(T / dt)
-            u = u0.copy()
-            times = [0]
-            solutions = [u.copy()]
-
-            L_op_half = np.exp(-1j * self.k ** 3 * dt / 2)
-
-            def nonlinear(u_):
-                u_hat_ = np.fft.fft(u_)
-                ux_hat = 1j * self.k * u_hat_
-                ux = np.real(np.fft.ifft(ux_hat))
-                return 6 * u_ * ux
-
-            for n in range(nt):
-                u_hat = np.fft.fft(u)
-                u_hat = L_op_half * u_hat
-                u = np.real(np.fft.ifft(u_hat))
-
-                k1 = nonlinear(u)
-                k2 = nonlinear(u + 0.5 * dt * k1)
-                k3 = nonlinear(u + 0.5 * dt * k2)
-                k4 = nonlinear(u + dt * k3)
-                u = u + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
-
-                u_hat = np.fft.fft(u)
-                u_hat = L_op_half * u_hat
-                u = np.real(np.fft.ifft(u_hat))
-
-                if (n + 1) % save_every == 0:
-                    times.append((n + 1) * dt)
-                    solutions.append(u.copy())
-
-            return np.array(times), np.array(solutions)
-
-
+for res in space_res:
     LAM = 0
     TOL = 1e-4
     TRAIN_FRAC = 0.8
+    T_val = 2
+    dt_val = 0.001
+    x_steps = res
+    dxs.append(60/res)
 
-    solver = KdVSolver(L=60, N=512)
+    solver = KdVSolver(L=60, N=x_steps)
     u0 = solver.two_solitons(c1=0.5, c2=0.2, sep=18)
 
-    times, sols = solver.solve(u0, dt=0.001, T=T_val)
+    times, sols = solver.solve(u0, dt=dt_val, T=T_val)
     x = solver.x
     dt = times[1] - times[0]
     k = solver.k
@@ -160,14 +164,15 @@ for T_val in Ts:
             terms.append(f"{sign}{c:.4f}*{label}")
 
     time_err_list.append(test_mse)
-    print(f"time val {T_val} done")
-plt.plot(Ts, time_err_list, marker='o')
+    print(f"time val {res} done")
+plt.plot(dxs, time_err_list, marker='o')
 
-#plt.yscale("log")
+plt.yscale("log")
+plt.xscale("log")
 
-plt.xlabel("Time Range (T)")
+plt.xlabel("Spatial Step Size (dt)")
 plt.ylabel("SINDy Reconstruction vs True Data MSE")
-plt.title("Data Time Range vs SINDy Model Error")
+plt.title("Data Spatial Step Size vs SINDy Model Error")
 
 plt.grid(True, which="both")
 

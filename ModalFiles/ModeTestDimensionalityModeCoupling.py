@@ -209,24 +209,32 @@ U_sindy = np.fft.irfft2(U_hat_sindy, s=(u.shape[1], u.shape[2]), axes=(1, 2)).re
 
 if PLOTTING:
     Xg, Yg = np.meshgrid(x, y, indexing='ij')
+
     for i in range(Nt):
         if i % 200 == 0 or i == (Nt - 1):
-            fig, axes = plt.subplots(3, 1, figsize=(8, 14))
-            for ax, field, title in zip(
-                    axes,
-                    [u[i], U_reconstructed[i], U_sindy[i]],
-                    [f"True (step {i})",
-                     f"Modal reconstruct (step {i})",
-                     f"SINDy forecast (step {i})"],
-            ):
+
+            fields = [u[i], U_reconstructed[i], U_sindy[i]]
+            titles = [
+                f"Training Data (step {i})",
+                f"Pure Modal Reconstruction (step {i})",
+                f"SINDy Forecast Reconstruction (step {i})",
+            ]
+
+            vmin = min(f.min() for f in fields)
+            vmax = max(f.max() for f in fields)
+
+            fig, axes = plt.subplots(1, 3, figsize=(18, 5), constrained_layout=True)
+
+            for ax, field, title in zip(axes, fields, titles):
                 im = ax.imshow(
                     field.T, origin="lower",
                     extent=[x[0], x[-1], y[0], y[-1]],
                     cmap="Blues_r",
+                    vmin=vmin, vmax=vmax,
                 )
                 ax.set(xlabel="x", ylabel="y", title=title)
-                fig.colorbar(im, ax=ax, label="Amplitude")
-            plt.tight_layout()
+
+            fig.colorbar(im, ax=axes, label="Amplitude", shrink=0.8)
             plt.show()
 
 if PLOT_MODES:
@@ -306,23 +314,28 @@ print(f"New IC SINDy-True MSE: {np.mean((u_test - U_sindy_test) ** 2)}")
 if PLOTTING:
     Xg, Yg = np.meshgrid(x, y, indexing='ij')
 
-    for i in range(0, Nt_test, 200):
-        fig, axes = plt.subplots(2, 1, figsize=(8, 10))
+    for i in range(Nt):
+        if i % 200 == 0 or i == (Nt - 1):
+            fields = [u_test[i], U_sindy_test[i]]
+            titles = [
+                f"Testing Data (step {i})",
+                f"SINDy Forecast Reconstruction (step {i})",
+            ]
 
-        for ax, field, title in zip(
-                axes,
-                [u_test[i], U_sindy_test[i]],
-                [f"True (new IC, step {i})",
-                 f"SINDy forecast (new IC, step {i})"],
-        ):
-            im = ax.imshow(
-                field.T,
-                origin="lower",
-                extent=[x[0], x[-1], y[0], y[-1]],
-                cmap="Blues_r",
-            )
-            ax.set(xlabel="x", ylabel="y", title=title)
-            fig.colorbar(im, ax=ax, label="Amplitude")
+            vmin = min(f.min() for f in fields)
+            vmax = max(f.max() for f in fields)
 
-        plt.tight_layout()
-        plt.show()
+            fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
+
+            for ax, field, title in zip(axes, fields, titles):
+                im = ax.imshow(
+                    field.T,
+                    origin="lower",
+                    extent=[x[0], x[-1], y[0], y[-1]],
+                    cmap="Blues_r",
+                    vmin=vmin, vmax=vmax,
+                )
+                ax.set(xlabel="x", ylabel="y", title=title)
+
+            fig.colorbar(im, ax=axes, label="Amplitude", shrink=0.8)
+            plt.show()

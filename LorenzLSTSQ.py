@@ -30,7 +30,7 @@ feature_lib, feature_names = lib_creator.fit([X[:, i] for i in range(X.shape[1])
 dX = np.array(np.gradient(X, t.ravel(), axis=0))
 
 #Perform least-squares linear regression with thresholding
-threshold = 0.05
+threshold = 0.01
 coeffs = []
 
 for dim in range(dX.shape[1]):

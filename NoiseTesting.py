@@ -3,6 +3,7 @@ import scipy.sparse.linalg as spla
 from scipy.interpolate import UnivariateSpline
 import scipy as sp
 import matplotlib.pyplot as plt
+from scipy.signal import savgol_filter
 from scipy.integrate import solve_ivp
 
 def STRidge(X0, y, lam, maxit, tol, normalize=0, print_results=False):
@@ -71,61 +72,65 @@ def STRidge(X0, y, lam, maxit, tol, normalize=0, print_results=False):
     else:
         return w
 
-space_step_size = [0.005, 0.01, 0.05, 0.1, 0.5, 1]
-ranges = [0.1, 0.3, 0.5, 0.7, 1, 3, 5, 7, 10]
-errs = []
-for greg in space_step_size:
-    LAM = 0
+noise_vals = [0.000001, 0.000005, 0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01]
+mse_vals = []
+
+GREG = 1000
+
+h = 0.01
+x = np.arange(-10, 10 + h, h)
+N = len(x)
+
+
+def f(u):
+    return 4 * u * (1 - u ** 2)
+
+
+diagonals = []
+diagonals.append(-2 * np.ones(N))
+diagonals.append(np.ones(N - 1))
+diagonals.append(np.ones(N - 1))
+A = sp.sparse.diags(diagonals, [0, 1, -1], shape=(N, N), format="lil")
+
+A[0, 1] = 2
+A[-1, -2] = 2
+A = A.tocsr()
+
+k = 0.001
+
+I = sp.sparse.identity(N)
+M_left = I - (k / (h ** 2)) * A
+
+solver = spla.factorized(M_left.tocsc())
+
+U = np.exp(-x ** 2)
+
+t = 0.0
+U_list = [U.copy()]
+t_list = [t]
+
+for n in range(GREG):
+    rhs = U + k * f(U)
+    U_new = solver(rhs)
+    t += k
+    U = U_new
+    U_list.append(U.copy())
+    t_list.append(t)
+
+U_list_temp = np.array(U_list)
+True_U = U_list_temp.copy()
+t_list = np.array(t_list)
+
+for noise_val in noise_vals:
+    LAM = 1e5
     TOL = 0.05
-    TRAIN_FRAC = 0.8
 
-    h = greg
-    x = np.arange(-10, 10 + h, h)
-    N = len(x)
+    noise = np.random.normal(0, noise_val, size=U_list_temp.shape)
+    U_list = U_list_temp + noise
 
-
-    def f(u):
-        return 4 * u * (1 - u ** 2)
-
-    diagonals = []
-    diagonals.append(-2 * np.ones(N))
-    diagonals.append(np.ones(N - 1))
-    diagonals.append(np.ones(N - 1))
-    A = sp.sparse.diags(diagonals, [0, 1, -1], shape=(N, N), format="lil")
-
-    A[0, 1] = 2
-    A[-1, -2] = 2
-    A = A.tocsr()
-
-    k = 0.001
-    iters = int(1/k)
-
-    I = sp.sparse.identity(N)
-    M_left = I - (k / (h ** 2)) * A
-
-    solver = spla.factorized(M_left.tocsc())
-
-    U = np.exp(-x ** 2)
-    noise = np.random.normal(0, 0.001, size=U.shape)
-    #U += noise
-
-    t = 0.0
-    U_list = [U.copy()]
-    t_list = [t]
-
-    for n in range(iters):
-        rhs = U + k * f(U)
-        U_new = solver(rhs)
-        t += k
-        U = U_new
-        U_list.append(U.copy())
-        t_list.append(t)
-
-    U_list = np.array(U_list)
-    t_list = np.array(t_list)
 
     print(f"Generated trajectory shape: {U_list.shape}")
-    """
+
     X, T = np.meshgrid(x, t_list)
     fig = plt.figure(figsize=(12, 8))
     ax = fig.add_subplot(111, projection="3d")
@@ -136,15 +141,49 @@ for greg in space_step_size:
     ax.set_title(f"Numerical solution to $u_t = u_{{xx}} + 4u(1-u^2)$")
     plt.tight_layout()
     plt.show()
-    """
+
     U_dot = np.zeros_like(U_list)
     U_dot[1:-1, :] = (U_list[2:, :] - U_list[:-2, :]) / (2 * k)
     U_dot[0, :] = (U_list[1, :] - U_list[0, :]) / k
     U_dot[-1, :] = (U_list[-1, :] - U_list[-2, :]) / k
 
-    U_x = np.zeros_like(U_list)
-    U_xx = np.zeros_like(U_list)
+    print("1")
 
+    window_t = 31
+    window_x = 31
+
+    polyorder = 3
+
+    U_dot = savgol_filter(
+        U_list,
+        window_length=window_t,
+        polyorder=polyorder,
+        deriv=1,
+        delta=k,
+        axis=0,
+        mode='interp'
+    )
+
+    U_x = savgol_filter(
+        U_list,
+        window_length=window_x,
+        polyorder=polyorder,
+        deriv=1,
+        delta=h,
+        axis=1,
+        mode='interp'
+    )
+
+    U_xx = savgol_filter(
+        U_list,
+        window_length=window_x,
+        polyorder=polyorder,
+        deriv=2,
+        delta=h,
+        axis=1,
+        mode='interp'
+    )
+    """
     for i in range(len(t_list)):
         U = U_list[i, :]
         U_x[i, 1:-1] = (U[2:] - U[:-2]) / (2 * h)
@@ -152,30 +191,36 @@ for greg in space_step_size:
         U_x[i, -1] = (U[-1] - U[-2]) / h
 
         U_xx[i, :] = (A @ U) / h ** 2
-
+    """
     U_0 = np.ones_like(U_list)
     U_sq = U_list ** 2
     U_cu = U_list ** 3
 
-    n_t = len(t_list)
-    n_train = int(n_t * TRAIN_FRAC)
-    train_idx = np.arange(n_train)
-    test_idx = np.arange(n_train, n_t)
-
     candidate_library_train = np.column_stack([
-        U_0[train_idx].flatten(),
-        U_list[train_idx].flatten(),
-        U_sq[train_idx].flatten(),
-        U_cu[train_idx].flatten(),
-        U_x[train_idx].flatten(),
-        U_xx[train_idx].flatten(),
+        U_0.flatten(),
+        U_list.flatten(),
+        U_sq.flatten(),
+        U_cu.flatten(),
+        U_x.flatten(),
+        U_xx.flatten(),
     ])
 
-    U_dot_train = U_dot[train_idx].flatten()
+    U_dot_train = U_dot.flatten()
 
+    print("2")
 
-    coef = STRidge(candidate_library_train, U_dot_train.reshape(-1, 1), LAM, 10000, TOL, normalize=0)
+    coef = STRidge(candidate_library_train, U_dot_train.reshape(-1, 1), LAM, 1000, TOL, normalize=0)
     coef = coef.flatten().real
+
+    coef_zero = np.zeros_like(coef)
+    res_idx = np.where(abs(coef) >= TOL,
+                        True,
+                        False)
+    for i in range(len(res_idx)):
+        if res_idx[i]:
+            coef_zero[i] = coef[i]
+
+    coef = coef_zero.copy()
 
     print("\nDiscovered coefficients:")
     labels = ['1', 'u', 'u²', 'u³', 'u_x', 'u_xx']
@@ -217,31 +262,42 @@ for greg in space_step_size:
 
         return features @ coef
 
+    t_eval = t_list
 
-    t_test_local = t_list[test_idx] - t_list[test_idx[0]]
+    print("3")
 
     sol = solve_ivp(
         rhs_pde,
-        (0, t_test_local[-1]),
-        U_list[test_idx[0]].copy(),
-        t_eval=t_test_local,
-        method="RK45",
+        (t_list[0], t_list[-1]),
+        True_U[0],
+        t_eval=t_eval,
+        method="Radau",
     )
 
-    pred = sol.y.T
-    true = U_list[test_idx]
+    U_sindy = sol.y.T
 
-    test_mse = np.mean((pred - true) ** 2)
-    errs.append(test_mse)
-    print(f"\nTest MSE: {test_mse:.6e}")
-    print("─" * 70)
+    print("True trajectory shape:", True_U.shape)
+    print("SINDy trajectory shape:", U_sindy.shape)
 
-plt.plot(space_step_size, errs, marker='o')
+    try:
+        mse = np.mean((True_U - U_sindy) ** 2)
+        rmse = np.sqrt(mse)
+
+        relative_l2 = np.linalg.norm(True_U - U_sindy) / np.linalg.norm(True_U)
+    except:
+        mse = 1
+        rmse = 1
+
+    mse_vals.append(mse)
+
+plt.plot(noise_vals, mse_vals, marker='o')
 
 plt.xscale("log")
-plt.xlabel("Time Step Size (dt)")
-plt.ylabel("SINDy Reconstruction vs True Data MSE")
-plt.title("Data Time Step Size vs SINDy Model Error")
+plt.yscale("log")
+
+plt.xlabel("Noise Function S.D.")
+plt.ylabel("SINDy-True Solution MSE")
+plt.title("Data Noise S.D. vs SINDy Model Error with Savgol Filter")
 
 plt.grid(True, which="both")
 

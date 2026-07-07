@@ -68,7 +68,7 @@ c1, c2 = 0.5, 0.2
 u0 = solver.two_solitons(c1=c1, c2=c2, sep=18)
 
 dt = 0.001
-T = 10
+T = 2
 
 times, sols = solver.solve(u0, dt, T)
 x = solver.x
