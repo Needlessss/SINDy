@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=LinAlgWarning)
 N_MODES = 10
 
 MAX_ACTIVE = 4
-RDC_THRESHOLD = 0.90
+RDC_THRESHOLD = 0.9
 ENERGY_CAPTURE = 0.995
 POLY_DEGREE_DYNAMICS = 2
 POLY_DEGREE_MANIFOLD = 4
@@ -28,6 +28,7 @@ PLOTTING = True
 PRINT_SUMMARY = True
 
 RNG_SEED = 0
+
 
 def CFLcondition(u, dx, CFLcoe):
     toll = 1e-10
@@ -76,13 +77,10 @@ tend = 1000
 CFLcoe = 0.9
 t = 0.0
 
-itest = 8
-if itest == 8:
-    testname = "bump"
-    uL, uR = 0, 0
-    u = np.e ** -(((x - (x0 + L / 2)) ** 2) / (2 * ((L / 6) ** 2)))
-else:
-    raise ValueError("You expected me to bother with alternate initial conditions??")
+testname = "bump"
+uL, uR = 0, 0
+u = np.e ** -(((x - (x0 + L / 2)) ** 2) / (2 * ((L / 6) ** 2)))
+
 
 u_history = [u.copy()]
 t_history = [t]
