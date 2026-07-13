@@ -10,7 +10,7 @@ from scipy.linalg import LinAlgWarning
 warnings.filterwarnings("ignore", category=LinAlgWarning)
 ################################################################################
 
-N_MODES = 100
+N_MODES = 15
 TRAIN_FRAC = 0.5
 
 PLOT_SLICES = True
