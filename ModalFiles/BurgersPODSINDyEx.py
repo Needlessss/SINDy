@@ -115,8 +115,8 @@ u_mean = u.mean(axis=0)
 u_centred = u - u_mean
 
 _, S, Vt = np.linalg.svd(u_centred, full_matrices=False)
-phi = Vt[:N_MODES, :]          # (N_MODES, NX) spatial POD modes
-a = u_centred @ phi.T          # (Nt, N_MODES) POD temporal coefficients
+phi = Vt[:N_MODES, :]
+a = u_centred @ phi.T
 U_reconstructed = a @ phi + u_mean
 
 a_train = a
