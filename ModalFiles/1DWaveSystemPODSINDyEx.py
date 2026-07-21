@@ -77,8 +77,10 @@ sims = [solve_wave_equation(ic=fourier_ic(n, p)) for n, p in train_specs]
 x, t, _, dx, dt = sims[0]
 U_list = [s[2] for s in sims]
 
+print(np.shape(U_list))
 U_stacked = np.vstack(U_list)
 u_mean = U_stacked.mean(axis=0)
+print(np.shape(U_stacked))
 _, S, Vt = np.linalg.svd(U_stacked - u_mean, full_matrices=False)
 phi = Vt[:N_MODES, :]
 
@@ -236,7 +238,7 @@ def gaussian_ic(x, L):
 
 
 test_cases = [("combo", combo_ic),
-              ("sin(5x)", sin5_ic),
+              ("sin(5πx)", sin5_ic),
               ("Gaussian pulse", gaussian_ic)]
 
 for name, ic_fn in test_cases:
@@ -268,8 +270,8 @@ if PLOT_MODES:
         a_true = (r["u_true"] - u_mean) @ phi.T
         _, a_pred_only = predict(r["u_true"][0], r["t"])
         for k in range(n_plot):
-            axes[k].plot(r["t"], a_true[:, k], color="black", label="True (POD proj.)")
-            axes[k].plot(r["t"], a_pred_only[:, k], "--", color="steelblue", label="Discovered dynamics")
+            axes[k].plot(r["t"], a_true[:, k], color="black", label="True")
+            axes[k].plot(r["t"], a_pred_only[:, k], "--", color="steelblue", label="SINDy Reconstruction")
             axes[k].set_ylabel(f"a{k}")
             axes[k].grid(True, alpha=0.3)
         axes[0].set_title(name)
@@ -287,6 +289,6 @@ if PLOTTING:
         ax1.set_xlabel("x"); ax1.set_ylabel("t")
         ax2 = fig.add_subplot(1, 2, 2, projection="3d")
         ax2.plot_surface(Xm, Tm, r["U_pred"], cmap="viridis")
-        ax2.set_title(f"Discovered dynamics (var. captured={r['vc_dyn']:.3f})")
+        ax2.set_title(f"SINDy Reconstruction")
         ax2.set_xlabel("x"); ax2.set_ylabel("t")
         plt.tight_layout(); plt.show()

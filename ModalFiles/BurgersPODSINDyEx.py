@@ -23,7 +23,7 @@ KAPPA_SCALE = 5e-3
 BLOWUP_THRESHOLD = 1e3
 
 PLOT_SLICES = True
-PLOT_MODES = False
+PLOT_MODES = True
 PLOTTING = True
 PRINT_SUMMARY = True
 
@@ -387,7 +387,7 @@ if PLOT_MODES:
         ax.plot(t, a[:, k], color="black", label="True (POD)")
         ax.plot(t, a_sim[:, k], "--", color="steelblue", label=f"Reduced model ({tag})")
         ax.set_xlabel("Time"); ax.set_ylabel("Amplitude")
-        ax.set_title(f"POD mode {k + 1} ({tag})")
+        ax.set_title(f"POD mode {k} ({tag})")
         ax.grid(True, alpha=0.3)
         ax.legend(ncol=2, fontsize=8)
         plt.tight_layout(); plt.show()
@@ -410,7 +410,7 @@ if PLOTTING:
     ax3 = fig.add_subplot(1, 3, 3, projection="3d")
     ax3.view_init(azim=azim_val)
     ax3.plot_surface(Xm, Tm, U_sindy, cmap="plasma")
-    ax3.set_title(f"Manifold+SINDy ({len(active)} active DOF)")
+    ax3.set_title(f"SINDy Reconstruction")
     ax3.set_xlabel("x"); ax3.set_ylabel("t")
 
     plt.tight_layout(); plt.show()
